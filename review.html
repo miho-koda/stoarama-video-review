@@ -19,20 +19,37 @@ const videoId = q.get('v');
 const start = Number(q.get('start'));
 const end = Number(q.get('end'));
 const status = document.getElementById('status');
-let player, stopped = false;
+let player, stopped = false, notice = 'Loading YouTube player…';
 function show(message='') {
+  if (message) notice = message;
   const current = player && player.getCurrentTime ? player.getCurrentTime() : 0;
-  status.textContent = `${message}\nSelected: ${start}s → ${end}s (02:30)\nPlayer position: ${current.toFixed(1)}s`;
+  const delta = current - start;
+  status.textContent = `${notice}\nSelected: ${start}s → ${end}s (02:30)\nPlayer position: ${current.toFixed(1)}s\nDistance from selected start: ${delta.toFixed(1)}s`;
 }
-function seek() { stopped=false; player.seekTo(start, true); player.playVideo(); show('Seeking to selected start…'); }
+function seek() {
+  if (!player || !player.seekTo) return;
+  stopped = false;
+  show('Sending one seek request to YouTube…');
+  player.seekTo(start, true);
+  player.playVideo();
+  setTimeout(() => {
+    const actual = player.getCurrentTime();
+    if (Math.abs(actual - start) <= 15) show('Seek accepted. Playing the selected interval.');
+    else show(`YouTube placed the player at ${actual.toFixed(1)}s instead. The selected point may be outside this livestream's current DVR window.`);
+  }, 3000);
+}
 window.onYouTubeIframeAPIReady = () => {
   player = new YT.Player('player', {
     videoId,
     width: 960, height: 540,
     playerVars: { enablejsapi: 1, origin: location.origin, playsinline: 1 },
     events: {
-      onReady: e => { e.target.loadVideoById({videoId, startSeconds:start, endSeconds:end}); show('Player ready.'); },
-      onStateChange: e => { if (e.data === YT.PlayerState.PLAYING && Math.abs(player.getCurrentTime()-start)>8 && !stopped) seek(); },
+      onReady: e => {
+        e.target.loadVideoById(videoId);
+        show('Player ready. Waiting briefly before the initial seek…');
+        setTimeout(seek, 1800);
+      },
+      onStateChange: () => show(),
       onError: e => show(`YouTube player error ${e.data}`)
     }
   });
@@ -41,9 +58,9 @@ setInterval(() => {
   if (!player || !player.getCurrentTime) return;
   const current = player.getCurrentTime();
   if (current >= end && !stopped) { player.pauseVideo(); stopped=true; show('Selected 02:30 interval complete.'); }
-  else show(current < start-8 || current > end+8 ? 'Player is outside selected DVR interval.' : 'Playing selected interval.');
+  else show();
 }, 1000);
-document.getElementById('reseek').onclick = () => seek();
+document.getElementById('reseek').onclick = event => { event.preventDefault(); seek(); };
 document.getElementById('original').onclick = () => window.open(`https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`, '_blank');
 const api = document.createElement('script'); api.src='https://www.youtube.com/iframe_api'; document.head.appendChild(api);
 </script>
