@@ -1,6 +1,6 @@
 # Stoarama candidate scanner
 
-Public 150-second review page: https://miho-koda.github.io/stoarama-video-review/review.html
+Public 150-second review page: https://miho-koda.github.io/stoarama-video-review/review-v2.html
 
 Accepted pilot manifest: [`youtube_review_10.csv`](youtube_review_10.csv)
 
