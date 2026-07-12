@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>YouTube annotation clip review</title>
+<style>
+  body { font: 16px system-ui; max-width: 1000px; margin: 24px auto; padding: 0 16px; background:#111; color:#eee }
+  #player { width: 960px; max-width: 100%; aspect-ratio: 16/9 }
+  #status { margin: 12px 0; padding: 10px; background:#222; white-space:pre-wrap }
+  button { padding: 8px 14px; margin-right: 8px }
+</style>
+<h1>Annotation clip review</h1>
+<div id="status">Loading YouTube player…</div>
+<div id="player"></div>
+<p><button id="reseek">Seek to selected start</button><button id="original">Open original live page</button></p>
+<script>
+const q = new URLSearchParams(location.search);
+const videoId = q.get('v');
+const start = Number(q.get('start'));
+const end = Number(q.get('end'));
+const status = document.getElementById('status');
+let player, stopped = false;
+function show(message='') {
+  const current = player && player.getCurrentTime ? player.getCurrentTime() : 0;
+  status.textContent = `${message}\nSelected: ${start}s → ${end}s (02:30)\nPlayer position: ${current.toFixed(1)}s`;
+}
+function seek() { stopped=false; player.seekTo(start, true); player.playVideo(); show('Seeking to selected start…'); }
+window.onYouTubeIframeAPIReady = () => {
+  player = new YT.Player('player', {
+    videoId,
+    width: 960, height: 540,
+    playerVars: { enablejsapi: 1, origin: location.origin, playsinline: 1 },
+    events: {
+      onReady: e => { e.target.loadVideoById({videoId, startSeconds:start, endSeconds:end}); show('Player ready.'); },
+      onStateChange: e => { if (e.data === YT.PlayerState.PLAYING && Math.abs(player.getCurrentTime()-start)>8 && !stopped) seek(); },
+      onError: e => show(`YouTube player error ${e.data}`)
+    }
+  });
+};
+setInterval(() => {
+  if (!player || !player.getCurrentTime) return;
+  const current = player.getCurrentTime();
+  if (current >= end && !stopped) { player.pauseVideo(); stopped=true; show('Selected 02:30 interval complete.'); }
+  else show(current < start-8 || current > end+8 ? 'Player is outside selected DVR interval.' : 'Playing selected interval.');
+}, 1000);
+document.getElementById('reseek').onclick = () => seek();
+document.getElementById('original').onclick = () => window.open(`https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`, '_blank');
+const api = document.createElement('script'); api.src='https://www.youtube.com/iframe_api'; document.head.appendChild(api);
+</script>
+</html>
