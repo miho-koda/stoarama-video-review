@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>YouTube annotation clip review</title>
+<style>
+  body { font: 16px system-ui; max-width: 1000px; margin: 24px auto; padding: 0 16px; background:#111; color:#eee }
+  #player { width: 960px; max-width: 100%; aspect-ratio: 16/9 }
+  #status { margin: 12px 0; padding: 10px; background:#222; white-space:pre-wrap }
+  button { padding: 8px 14px; margin-right: 8px }
+</style>
+<h1>Annotation clip review</h1>
+<div id="status">Loading YouTube player…</div>
+<div id="player"></div>
+<p><button id="reseek">Seek to selected start</button><button id="original">Open original live page</button></p>
+<script>
+const q = new URLSearchParams(location.search);
+const videoId = q.get('v');
+const requestedUtc = q.get('startUtc');
+let start = Number(q.get('start'));
+let end = Number(q.get('end'));
+const status = document.getElementById('status');
+let player, stopped = false, targetReady = false;
+let notice = 'Loading YouTube player…';
+function show(message='') {
+  if (message) notice = message;
+  const current = player && player.getCurrentTime ? player.getCurrentTime() : 0;
+  const delta = current - start;
+  const selected = requestedUtc ? `${requestedUtc} UTC → 150 seconds later` : `${start}s → ${end}s (02:30)`;
+  status.textContent = `${notice}\nSelected: ${selected}\nCalculated player target: ${start.toFixed(1)}s\nPlayer position: ${current.toFixed(1)}s\nDistance from selected start: ${delta.toFixed(1)}s`;
+}
+function seek() {
+  if (!player || !player.seekTo) return;
+  if (requestedUtc) {
+    const liveEdge = player.getDuration();
+    if (!Number.isFinite(liveEdge) || liveEdge <= 0) {
+      show('YouTube has not exposed the livestream clock yet. Press the button again in a moment.');
+      return;
+    }
+    const secondsBehindLive = Date.now() / 1000 - Date.parse(requestedUtc) / 1000;
+    start = liveEdge - secondsBehindLive;
+    end = start + 150;
+  }
+  targetReady = true;
+  stopped = false;
+  show('Sending one seek request to YouTube…');
+  player.seekTo(start, true);
+  player.playVideo();
+  setTimeout(() => {
+    const actual = player.getCurrentTime();
+    if (Math.abs(actual - start) <= 15) show('Seek accepted. Playing the selected interval.');
+    else show(`YouTube placed the player at ${actual.toFixed(1)}s instead. The selected point may be outside this livestream's current DVR window.`);
+  }, 3000);
+}
+window.onYouTubeIframeAPIReady = () => {
+  player = new YT.Player('player', {
+    videoId,
+    width: 960, height: 540,
+    playerVars: { enablejsapi: 1, origin: location.origin, playsinline: 1 },
+    events: {
+      onReady: e => {
+        e.target.loadVideoById(videoId);
+        show('Player ready. Waiting for YouTube to expose the live-edge clock…');
+        let attempts = 0;
+        const readyTimer = setInterval(() => {
+          attempts += 1;
+          if (player.getDuration() > 0) {
+            clearInterval(readyTimer);
+            seek();
+          } else if (attempts >= 10) {
+            clearInterval(readyTimer);
+            show('Press “Seek to selected start” once the video preview appears.');
+          }
+        }, 500);
+      },
+      onStateChange: () => show(),
+      onError: e => show(`YouTube player error ${e.data}`)
+    }
+  });
+};
+setInterval(() => {
+  if (!player || !player.getCurrentTime || !targetReady) return;
+  const current = player.getCurrentTime();
+  if (current >= end && !stopped) { player.pauseVideo(); stopped=true; show('Selected 02:30 interval complete.'); }
+  else show();
+}, 1000);
+document.getElementById('reseek').onclick = event => { event.preventDefault(); seek(); };
+document.getElementById('original').onclick = () => window.open(`https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`, '_blank');
+const api = document.createElement('script'); api.src='https://www.youtube.com/iframe_api'; document.head.appendChild(api);
+</script>
+</html>
