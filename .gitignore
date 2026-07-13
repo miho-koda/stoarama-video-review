@@ -7,6 +7,8 @@ __pycache__/
 *.pt
 work/
 clips/
+*.out
+*.err
 *.tmp
 youtube-cookies.txt
 rclone.conf

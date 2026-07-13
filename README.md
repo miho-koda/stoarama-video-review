@@ -1,9 +1,8 @@
 # Stoarama social-mixing video pipeline
 
-This repository turns the live Stoarama YouTube catalog into reviewable,
-timestamped social-mixing clips and metadata. It is a two-stage workflow because
-YouTube permits scanning on the GPU server but may block bulk video retrieval
-from cloud IPs.
+This repository turns Stoarama's YouTube, HLS, and HTTP-video catalog into
+reviewable, timestamped social-mixing clips and metadata. YouTube preservation
+can still require a Mac when cloud IPs are blocked.
 
 Use Python 3.11 or newer for both stages.
 
@@ -110,6 +109,30 @@ The preservation stage processes oldest selections first, resumes existing
 MP4s, enables yt-dlp's Deno/EJS challenge solver, validates encoded duration,
 uploads each clip, creates a Drive link, and writes `pilot_manifest.csv` with
 UTC/local timestamps and source metadata.
+
+## Overnight all-source scan
+
+`overnight_scan.py` inventories all motion-video source types, interleaves
+countries, searches existing Stoarama recordings before trying a live capture,
+and checkpoints after every source. Accepted MP4s are cached under
+`work/overnight/clips/` and uploaded to the configured Drive remote. YouTube
+selections that cannot be preserved on the server are written to
+`needs_mac_download.csv`.
+
+Submit two six-hour jobs to cover a twelve-hour overnight window:
+
+```bash
+mkdir -p work/overnight/logs
+export STOARAMA_REPO="$PWD"
+export STOARAMA_PYTHON="$HOME/.stoarama-server-env/bin/python"
+export STOARAMA_MODEL="/absolute/path/to/yolo26n.pt"
+first=$(sbatch --parsable overnight_scan.sbatch)
+sbatch --dependency="afterany:$first" overnight_scan.sbatch
+```
+
+Morning outputs are `review_balanced.csv`, `selections_all.csv`,
+`scan_ledger.csv`, and `needs_mac_download.csv`. The balanced review contains
+at most 80 verified Drive clips and caps each country at five rows.
 
 ## Reproducibility and safety
 
