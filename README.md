@@ -119,15 +119,23 @@ and checkpoints after every source. Accepted MP4s are cached under
 selections that cannot be preserved on the server are written to
 `needs_mac_download.csv`.
 
-Submit two six-hour jobs to cover a twelve-hour overnight window:
+Submit two independent six-hour shards concurrently, then merge their outputs:
 
 ```bash
 mkdir -p work/overnight/logs
 export STOARAMA_REPO="$PWD"
 export STOARAMA_PYTHON="$HOME/.stoarama-server-env/bin/python"
 export STOARAMA_MODEL="/absolute/path/to/yolo26n.pt"
+export STOARAMA_SHARD_COUNT=2
+export STOARAMA_WORK=work/overnight/shard_0
+export STOARAMA_DRIVE_REMOTE=pilotdrive:overnight_scan/shard_0
+export STOARAMA_SHARD_INDEX=0
 first=$(sbatch --parsable overnight_scan.sbatch)
-sbatch --dependency="afterany:$first" overnight_scan.sbatch
+export STOARAMA_WORK=work/overnight/shard_1
+export STOARAMA_DRIVE_REMOTE=pilotdrive:overnight_scan/shard_1
+export STOARAMA_SHARD_INDEX=1
+second=$(sbatch --parsable overnight_scan.sbatch)
+sbatch --dependency="afterany:$first:$second" merge_overnight.sbatch
 ```
 
 Morning outputs are `review_balanced.csv`, `selections_all.csv`,

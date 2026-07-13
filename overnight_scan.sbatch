@@ -15,7 +15,9 @@ module load community-modules
 module load ffmpeg/5.1.4
 "${STOARAMA_PYTHON:?Set STOARAMA_PYTHON}" overnight_scan.py \
   --model "${STOARAMA_MODEL:?Set STOARAMA_MODEL}" \
-  --work work/overnight \
+  --work "${STOARAMA_WORK:-work/overnight}" \
   --hours 5.75 \
   --device 0 \
-  --drive-remote pilotdrive:overnight_scan
+  --drive-remote "${STOARAMA_DRIVE_REMOTE:-pilotdrive:overnight_scan}" \
+  --shard-count "${STOARAMA_SHARD_COUNT:-1}" \
+  --shard-index "${STOARAMA_SHARD_INDEX:-0}"

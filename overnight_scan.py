@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -124,6 +125,8 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--refresh-catalog", action="store_true")
     result.add_argument("--drive-remote", default="pilotdrive:overnight_scan")
     result.add_argument("--max-sources", type=int, default=0)
+    result.add_argument("--shard-count", type=int, default=1)
+    result.add_argument("--shard-index", type=int, default=0)
     return result
 
 
@@ -142,6 +145,13 @@ def main() -> None:
         write_csv(catalog_path, catalog, CATALOG_FIELDS)
         print(f"catalog_records={len(catalog)}", flush=True)
     catalog = read_csv(catalog_path)
+    if args.shard_count < 1 or not 0 <= args.shard_index < args.shard_count:
+        raise SystemExit("shard-index must be between 0 and shard-count - 1")
+    if args.shard_count > 1:
+        catalog = [row for row in catalog if
+                   int.from_bytes(hashlib.sha256(row["source_key"].encode()).digest()[:8], "big") % args.shard_count
+                   == args.shard_index]
+        print(f"shard={args.shard_index}/{args.shard_count} sources={len(catalog)}", flush=True)
     accepted_path, ledger_path = args.work / "selections_all.csv", args.work / "scan_ledger.csv"
     accepted = read_csv(accepted_path) if accepted_path.exists() else []
     ledger = read_csv(ledger_path) if ledger_path.exists() else []
