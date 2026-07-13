@@ -1,0 +1,28 @@
+{
+  "stoarama_api": "https://stoarama.com/api/v1/dashboard/streams",
+  "source_types": ["youtube_watch"],
+  "target_clips": 80,
+  "lookback_hours": 119,
+  "coarse_interval_minutes": 30,
+  "top_windows_per_video": 8,
+  "min_person_height_px": 60,
+  "qualifying_people_min": 2,
+  "qualifying_people_max": 30,
+  "qualifying_frame_fraction": 0.8,
+  "person_size_fraction": 0.7,
+  "daylight_frame_fraction": 0.75,
+  "fixed_camera_min_score": 0.65,
+  "local_daylight_start_hour": 6,
+  "local_daylight_end_hour": 19,
+  "utc_offset_by_country": {
+    "Thailand": 7
+  },
+  "duration_policy": {
+    "excellent_min_score": 5.5,
+    "excellent_seconds": 150,
+    "good_min_score": 4.0,
+    "good_seconds": 120,
+    "accepted_seconds": 90
+  },
+  "drive_remote": "pilotdrive:"
+}

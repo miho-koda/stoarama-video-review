@@ -14,6 +14,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 try:
     import yt_dlp
@@ -76,6 +77,32 @@ def filename(clip: dict) -> str:
     return f"{clip['row_id']:02d}_{slug}.mp4"
 
 
+def load_clips(manifest: str | None) -> list[dict]:
+    if not manifest:
+        return [dict(clip) for clip in CLIPS]
+    if manifest.startswith(("http://", "https://")):
+        with urllib.request.urlopen(manifest, timeout=60) as response:
+            text = response.read().decode("utf-8")
+        rows = list(csv.DictReader(text.splitlines()))
+    else:
+        with Path(manifest).expanduser().open(newline="", encoding="utf-8") as handle:
+            rows = list(csv.DictReader(handle))
+    clips = []
+    for index, row in enumerate(rows, 1):
+        video_id = row.get("video_id") or urllib.parse.parse_qs(urllib.parse.urlsplit(row.get("youtube_url", "")).query).get("v", [""])[0]
+        if not video_id:
+            raise ValueError(f"manifest row {index} has no video_id")
+        clips.append({
+            **row, "row_id": int(row.get("row_id") or index), "video_id": video_id,
+            "name": row.get("name") or video_id,
+            "start_utc": row.get("segment_start_utc") or row.get("start_utc"),
+            "duration": int(float(row.get("duration_seconds") or row.get("duration") or 0)),
+            "score": float(row.get("score") or 0),
+            "people": row.get("people") or "/".join(str(row.get(key, "")) for key in ("people_min", "people_median", "people_max")),
+        })
+    return clips
+
+
 def run(command: list[str], **kwargs):
     return subprocess.run(command, check=True, text=True, **kwargs)
 
@@ -116,7 +143,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--browser", default="chrome", choices=["chrome", "safari", "firefox", "none"])
     parser.add_argument("--output", type=Path, default=Path.home() / "stoarama-pilot-clips")
+    parser.add_argument("--manifest", help="Selection CSV path or HTTPS URL; omit to use the bundled ten-row pilot")
     parser.add_argument("--upload", action="store_true", help="Upload to the configured pilotdrive: rclone remote")
+    parser.add_argument("--drive-remote", default="pilotdrive:")
     args = parser.parse_args()
     for command in ("ffmpeg", "ffprobe"):
         if not shutil.which(command):
@@ -124,27 +153,38 @@ def main():
     if args.upload and not shutil.which("rclone"):
         raise SystemExit("Missing rclone. Install it with: brew install rclone")
     args.output.mkdir(parents=True, exist_ok=True)
+    clips = load_clips(args.manifest)
     manifest = []
     # Preserve oldest selections first because the DVR history is rolling.
-    for position, clip in enumerate(sorted(CLIPS, key=lambda x: x["start_utc"]), 1):
-        print(f"[{position}/10] {clip['name']}")
+    for position, clip in enumerate(sorted(clips, key=lambda x: x["start_utc"]), 1):
+        print(f"[{position}/{len(clips)}] {clip['name']}")
         try:
             path = preserve(clip, args.output, args.browser)
             drive_url = ""
             if args.upload:
-                run(["rclone", "copyto", str(path), f"pilotdrive:{path.name}"])
-                link = run(["rclone", "link", f"pilotdrive:{path.name}"], capture_output=True)
+                destination = f"{args.drive_remote.rstrip(':')}:{path.name}"
+                run(["rclone", "copyto", str(path), destination])
+                link = run(["rclone", "link", destination], capture_output=True)
                 drive_url = link.stdout.strip()
             start = datetime.fromisoformat(clip["start_utc"])
+            start_local = ""; end_local = ""
+            if clip.get("timezone"):
+                zone = ZoneInfo(clip["timezone"])
+                start_local = start.astimezone(zone).isoformat()
+                end_local = (start + timedelta(seconds=clip["duration"])).astimezone(zone).isoformat()
             manifest.append({**clip, "filename": path.name,
                 "youtube_url": f"https://www.youtube.com/watch?v={clip['video_id']}",
                 "end_utc": (start + timedelta(seconds=clip["duration"])).isoformat(),
+                "start_local": start_local, "end_local": end_local,
+                "timestamp_accuracy": "approximately ±5 seconds",
                 "drive_url": drive_url, "status": "downloaded"})
             print(f"  saved: {path.name}")
         except Exception as error:
             manifest.append({**clip, "filename": filename(clip),
                 "youtube_url": f"https://www.youtube.com/watch?v={clip['video_id']}",
-                "end_utc": "", "drive_url": "", "status": f"ERROR: {error}"})
+                "end_utc": "", "start_local": "", "end_local": "",
+                "timestamp_accuracy": "approximately ±5 seconds",
+                "drive_url": "", "status": f"ERROR: {error}"})
             print(f"  ERROR: {error}")
     manifest.sort(key=lambda row: row["row_id"])
     csv_path = args.output / "pilot_manifest.csv"
@@ -152,10 +192,10 @@ def main():
         writer = csv.DictWriter(file, fieldnames=manifest[0].keys())
         writer.writeheader(); writer.writerows(manifest)
     if args.upload:
-        run(["rclone", "copyto", str(csv_path), "pilotdrive:pilot_manifest.csv"])
+        run(["rclone", "copyto", str(csv_path), f"{args.drive_remote.rstrip(':')}:pilot_manifest.csv"])
     successes = sum(row["status"] == "downloaded" for row in manifest)
-    print(f"Finished: {successes}/10 clips. Manifest: {csv_path}")
-    if successes != 10:
+    print(f"Finished: {successes}/{len(clips)} clips. Manifest: {csv_path}")
+    if successes != len(clips):
         raise SystemExit(1)
 
 
