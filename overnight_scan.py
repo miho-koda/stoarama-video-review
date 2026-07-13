@@ -16,6 +16,7 @@ from pathlib import Path
 
 from stoarama_pipeline.common import duration_for_score, load_config, read_csv, write_csv
 from stoarama_pipeline.discover import CATALOG_FIELDS, discover
+from stoarama_pipeline.link_audit import classify_link_failure, validate_source_link
 from stoarama_pipeline.media import trim_video
 from stoarama_pipeline.stoarama_sources import known_unsuitable, rank_archive, rank_live
 
@@ -32,6 +33,8 @@ ACCEPTED_FIELDS = [
 SCANNER_REVISION = "2026-07-13-v1"
 LEDGER_FIELDS = [
     "source_key", "stream_id", "name", "capture_type", "country", "status", "reason",
+    "source_link_status", "source_http_status", "resolved_source_url", "review_link_status",
+    "link_failure_class", "recommended_action", "retry_count", "last_checked_utc",
     "scanner_revision", "config_fingerprint", "slurm_job_id", "finished_at_utc",
 ]
 
@@ -129,7 +132,8 @@ def finalize(accepted: list[dict], work: Path, config: dict, remote: str) -> Non
     write_csv(work / "needs_mac_download.csv", needs_mac, ACCEPTED_FIELDS)
     rclone = os.path.expanduser("~/.local/bin/rclone")
     for name in ("review_balanced.csv", "selections_all.csv", "scan_ledger.csv", "needs_mac_download.csv",
-                 "youtube_failures.csv", "youtube_retry.csv", "run_summary.json"):
+                 "youtube_failures.csv", "youtube_retry.csv", "invalid_links.csv",
+                 "temporary_link_failures.csv", "run_summary.json"):
         source = work / name
         if source.exists():
             try:
@@ -217,9 +221,14 @@ def main() -> None:
         examined += 1
         print(f"[{examined}] {row['capture_type']} {row.get('country') or 'Unknown'} | {row['name']}", flush=True)
         status, reason, result, local_path = "rejected", "no passing interval", None, None
+        link_status, resolved_url, link_reason = validate_source_link(row)
+        link_failure_class = recommended_action = ""
         warning = known_unsuitable(row)
         try:
-            if warning:
+            if link_status == "malformed":
+                status, reason = "invalid_source", link_reason
+                link_failure_class, recommended_action = "malformed", "do_not_retry_until_url_is_fixed"
+            elif warning:
                 reason = f"catalog warning: {warning}"
             elif row["capture_type"] == "youtube_watch":
                 archived = None
@@ -255,6 +264,7 @@ def main() -> None:
                     except Exception as error:
                         upload_status = f"ERROR: {error}"
                 status = "accepted"
+                link_status = "reachable"
                 accepted.append({
                     **{field: row.get(field, "") for field in ACCEPTED_FIELDS}, **result,
                     "row_id": len(accepted) + 1, "local_path": str(local_path or ""),
@@ -264,12 +274,21 @@ def main() -> None:
                 reason = reason if not local_path else ""
                 print(f"  PASS score={float(result['score']):.3f} path={local_path or 'needs_mac'}", flush=True)
         except Exception as error:
-            status, reason = "error", str(error)
+            reason = str(error)
+            link_failure_class, recommended_action = classify_link_failure(reason)
+            status = "invalid_source" if link_failure_class in {"permanently_unavailable", "restricted"} else "error"
+            link_status = link_failure_class
             print(f"  ERROR {error}", flush=True)
+        checked_at = datetime.now(timezone.utc).isoformat()
         ledger.append({
             "source_key": row["source_key"], "stream_id": row["stream_id"], "name": row["name"],
             "capture_type": row["capture_type"], "country": row.get("country") or "",
-            "status": status, "reason": reason, "scanner_revision": SCANNER_REVISION,
+            "status": status, "reason": reason, "source_link_status": link_status,
+            "source_http_status": "", "resolved_source_url": resolved_url,
+            "review_link_status": link_status if status == "accepted" else "not_applicable",
+            "link_failure_class": link_failure_class, "recommended_action": recommended_action,
+            "retry_count": 0 if status != "error" else 1, "last_checked_utc": checked_at,
+            "scanner_revision": SCANNER_REVISION,
             "config_fingerprint": fingerprint, "slurm_job_id": os.environ.get("SLURM_JOB_ID", ""),
             "finished_at_utc": datetime.now(timezone.utc).isoformat(),
         })

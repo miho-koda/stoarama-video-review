@@ -13,6 +13,7 @@ from stoarama_pipeline.discover import CATALOG_FIELDS
 
 
 FAILURE_FIELDS = list(dict.fromkeys(CATALOG_FIELDS + ["scan_error", "failure_class", "recommended_action"]))
+LINK_FAILURE_FIELDS = list(dict.fromkeys(CATALOG_FIELDS + LEDGER_FIELDS))
 
 
 def classify_youtube_failure(reason: str) -> tuple[str, str]:
@@ -66,6 +67,12 @@ def main() -> None:
     youtube_retry = [row for row in youtube_failures if row["failure_class"] != "unavailable"]
     write_csv(args.output / "youtube_failures.csv", youtube_failures, FAILURE_FIELDS)
     write_csv(args.output / "youtube_retry.csv", youtube_retry, FAILURE_FIELDS)
+    invalid_links = [{**catalog_by_key.get(row["source_key"], {}), **row} for row in ledger
+                     if row.get("status") == "invalid_source"]
+    temporary_link_failures = [{**catalog_by_key.get(row["source_key"], {}), **row} for row in ledger
+                               if row.get("link_failure_class") in {"temporary_failure", "extraction_failure"}]
+    write_csv(args.output / "invalid_links.csv", invalid_links, LINK_FAILURE_FIELDS)
+    write_csv(args.output / "temporary_link_failures.csv", temporary_link_failures, LINK_FAILURE_FIELDS)
     summary = {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "shards": [str(path) for path in args.shards], "ledger_total": len(ledger),
@@ -74,6 +81,8 @@ def main() -> None:
         "needs_mac_total": sum(row.get("capture_type") == "youtube_watch" and not row.get("drive_url") for row in accepted),
         "youtube_failure_total": len(youtube_failures), "youtube_retry_total": len(youtube_retry),
         "youtube_failure_class_counts": dict(Counter(row["failure_class"] for row in youtube_failures)),
+        "invalid_link_total": len(invalid_links),
+        "temporary_link_failure_total": len(temporary_link_failures),
         "ledger_status_counts": dict(Counter(row.get("status") for row in ledger)),
     }
     (args.output / "run_summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
