@@ -13,6 +13,30 @@ from ultralytics import YOLO
 from scan import daylight_score, fixed_camera_score
 
 MODEL = Path(__file__).resolve().parent.parent / "models/yolo26n.pt"
+CRITERIA = {
+    "min_person_height_px": 60,
+    "qualifying_people_min": 2,
+    "qualifying_people_max": 30,
+    "qualifying_frame_fraction": .80,
+    "person_size_fraction": .70,
+    "daylight_frame_fraction": .75,
+    "fixed_camera_min_score": .65,
+    "daylight_score_min": .52,
+    "coarse_daylight_score_min": .46,
+    "local_daylight_start_hour": 6,
+    "local_daylight_end_hour": 19,
+    "utc_offset_by_country": {"Thailand": 7},
+}
+DEVICE = os.environ.get("YOLO_DEVICE", "0")
+
+
+def configure(criteria: dict | None = None, device: str | None = None):
+    """Override scanner thresholds without embedding pilot-specific values."""
+    global DEVICE
+    if criteria:
+        CRITERIA.update({key: value for key, value in criteria.items() if key in CRITERIA})
+    if device is not None:
+        DEVICE = str(device)
 
 
 class DVR:
@@ -65,7 +89,7 @@ class DVR:
 
 
 def detect(model, frame):
-    result = model.predict(frame, classes=[0, 2, 3, 5, 7], device=0, verbose=False)[0]
+    result = model.predict(frame, classes=[0, 2, 3, 5, 7], device=DEVICE, verbose=False)[0]
     people, vehicles = [], 0
     for cls, box in zip(result.boxes.cls.tolist(), result.boxes.xyxy.tolist()):
         if int(cls) == 0:
@@ -73,7 +97,7 @@ def detect(model, frame):
             people.append((box, h))
         else:
             vehicles += 1
-    qualifying = [(b, h) for b, h in people if h >= 60]
+    qualifying = [(b, h) for b, h in people if h >= float(CRITERIA["min_person_height_px"])]
     pairs = 0
     for i, (a, ah) in enumerate(qualifying):
         ax, ay = (a[0]+a[2])/2, a[3]
@@ -97,15 +121,18 @@ def full_window(dvr, model, start, cache):
         return None
     counts = [s["people"] for s in stats]
     heights = [h for s in stats for h in s["all_heights"]]
-    usable = np.mean([2 <= n <= 30 for n in counts])
-    sized = np.mean([h >= 60 for h in heights]) if heights else 0
-    daylight = np.mean([s["daylight"] >= .52 for s in stats])
+    usable = np.mean([int(CRITERIA["qualifying_people_min"]) <= n <= int(CRITERIA["qualifying_people_max"]) for n in counts])
+    sized = np.mean([h >= float(CRITERIA["min_person_height_px"]) for h in heights]) if heights else 0
+    daylight = np.mean([s["daylight"] >= float(CRITERIA["daylight_score_min"]) for s in stats])
     fixed = fixed_camera_score(frames)
     vehicles = sum(s["vehicles"] for s in stats)
     pairs = float(np.mean([min(s["pairs"], 8)/8 for s in stats]))
     median = float(np.median(counts))
     active = np.mean([5 <= n <= 22 for n in counts])
-    passed = usable >= .8 and sized >= .7 and daylight >= .75 and fixed >= .65 and sum(counts) > vehicles
+    passed = (usable >= float(CRITERIA["qualifying_frame_fraction"]) and
+              sized >= float(CRITERIA["person_size_fraction"]) and
+              daylight >= float(CRITERIA["daylight_frame_fraction"]) and
+              fixed >= float(CRITERIA["fixed_camera_min_score"]) and sum(counts) > vehicles)
     score = 2*active + pairs + daylight + sized + fixed - abs(median-12)/20 - max(0,max(counts)-25)/10
     return {"passed": passed, "score": score, "people_min": min(counts),
             "people_median": median, "people_max": max(counts),
@@ -114,26 +141,29 @@ def full_window(dvr, model, start, cache):
             "active_density_fraction": active, "vehicles_total": vehicles}
 
 
-def rank_video(row, model, lookback_hours=119):
+def rank_video(row, model, lookback_hours=119, coarse_minutes=30, top_windows=8):
     dvr = DVR(row["review_url"]); cache = {}; coarse = []
-    utc_offset = {"Thailand": 7, "United States": -7, "Canada": -6}.get(row["country"], 0)
+    if str(row.get("utc_offset_hours", "")).strip():
+        utc_offset = float(row["utc_offset_hours"])
+    else:
+        utc_offset = CRITERIA["utc_offset_by_country"].get(row.get("country", ""))
     oldest = dvr.live_utc - timedelta(hours=lookback_hours)
     at = oldest
     while at <= dvr.live_utc - timedelta(minutes=3):
-        local_hour = (at + timedelta(hours=utc_offset)).hour
-        if not 6 <= local_hour < 19:
-            at += timedelta(minutes=30)
+        local_hour = (at + timedelta(hours=float(utc_offset))).hour if utc_offset is not None else None
+        if local_hour is not None and not int(CRITERIA["local_daylight_start_hour"]) <= local_hour < int(CRITERIA["local_daylight_end_hour"]):
+            at += timedelta(minutes=coarse_minutes)
             continue
         frame = dvr.frame(at, cache)
         if frame is not None:
             s = detect(model, frame)
-            if s["daylight"] >= .46 and 1 <= s["people"] <= 30:
+            if (s["daylight"] >= float(CRITERIA["coarse_daylight_score_min"]) and
+                    1 <= s["people"] <= int(CRITERIA["qualifying_people_max"])):
                 score = s["daylight"] + min(s["pairs"],8)/8 - abs(s["people"]-12)/20
                 coarse.append((score, at))
-        at += timedelta(minutes=30)
+        at += timedelta(minutes=coarse_minutes)
     print(f"  coarse_candidates={len(coarse)}", flush=True)
     candidates = []; evaluated = []
-    top_windows = int(os.environ.get("TOP_WINDOWS", 8))
     for _, start in sorted(coarse, reverse=True)[:top_windows]:
         metrics = full_window(dvr, model, start, cache)
         if metrics:
