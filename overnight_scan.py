@@ -192,7 +192,11 @@ def main() -> None:
     accepted_path, ledger_path = args.work / "selections_all.csv", args.work / "scan_ledger.csv"
     accepted = read_csv(accepted_path) if accepted_path.exists() else []
     ledger = read_csv(ledger_path) if ledger_path.exists() else []
-    finished = {row["source_key"] for row in ledger}
+    latest_ledger = {row["source_key"]: row for row in ledger}
+    finished = {
+        key for key, prior in latest_ledger.items()
+        if not retryable_server_error(prior) or int(float(prior.get("retry_count") or 1)) >= 2
+    }
     for prior_path in args.prior_ledger:
         if prior_path.exists():
             finished.update(row["source_key"] for row in read_csv(prior_path)
@@ -224,6 +228,7 @@ def main() -> None:
         status, reason, result, local_path = "rejected", "no passing interval", None, None
         link_status, resolved_url, link_reason = validate_source_link(row)
         link_failure_class = recommended_action = ""
+        retry_count = int(float(latest_ledger.get(row["source_key"], {}).get("retry_count") or 0)) + 1
         warning = known_unsuitable(row)
         try:
             if link_status == "malformed":
@@ -288,7 +293,7 @@ def main() -> None:
             "source_http_status": "", "resolved_source_url": resolved_url,
             "review_link_status": link_status if status == "accepted" else "not_applicable",
             "link_failure_class": link_failure_class, "recommended_action": recommended_action,
-            "retry_count": 0 if status != "error" else 1, "last_checked_utc": checked_at,
+            "retry_count": retry_count, "last_checked_utc": checked_at,
             "scanner_revision": SCANNER_REVISION,
             "config_fingerprint": fingerprint, "slurm_job_id": os.environ.get("SLURM_JOB_ID", ""),
             "finished_at_utc": datetime.now(timezone.utc).isoformat(),

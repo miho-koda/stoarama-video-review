@@ -86,14 +86,14 @@ def analyse_video(path: str | Path, model, config: dict, device: str, samples: i
 
 
 def ffmpeg_executable() -> str:
+    executable = shutil.which("ffmpeg")
+    if executable:
+        return executable
     try:
         import imageio_ffmpeg
         return imageio_ffmpeg.get_ffmpeg_exe()
     except ImportError:
-        executable = shutil.which("ffmpeg")
-        if not executable:
-            raise RuntimeError("ffmpeg is not installed")
-        return executable
+        raise RuntimeError("ffmpeg is not installed")
 
 
 def probe_duration(path: str | Path) -> float:
