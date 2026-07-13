@@ -29,7 +29,29 @@ ACCEPTED_FIELDS = [
     "vehicles_total", "provenance", "stoarama_clip_id", "local_path", "drive_url",
     "upload_status", "link_status", "status",
 ]
-LEDGER_FIELDS = ["source_key", "stream_id", "name", "capture_type", "country", "status", "reason", "finished_at_utc"]
+SCANNER_REVISION = "2026-07-13-v1"
+LEDGER_FIELDS = [
+    "source_key", "stream_id", "name", "capture_type", "country", "status", "reason",
+    "scanner_revision", "config_fingerprint", "slurm_job_id", "finished_at_utc",
+]
+
+
+def config_fingerprint(config: dict) -> str:
+    payload = json.dumps(config, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(payload).hexdigest()[:16]
+
+
+def retryable_server_error(row: dict) -> bool:
+    if row.get("status") != "error":
+        return False
+    if row.get("capture_type") != "youtube_watch":
+        return True
+    reason = (row.get("reason") or "").lower()
+    terminal = (
+        "sign in to confirm", "cookies", "not a bot", "private video", "video unavailable",
+        "recording is not available", "list index out of range",
+    )
+    return not any(text in reason for text in terminal)
 
 
 def safe_name(value: str) -> str:
@@ -128,6 +150,8 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--max-sources", type=int, default=0)
     result.add_argument("--shard-count", type=int, default=1)
     result.add_argument("--shard-index", type=int, default=0)
+    result.add_argument("--prior-ledger", action="append", type=Path, default=[],
+                        help="Additional completed ledger to skip (repeatable)")
     return result
 
 
@@ -137,6 +161,7 @@ def main() -> None:
     import youtube_dvr_scan as youtube_engine
 
     config = load_config(args.config)
+    fingerprint = config_fingerprint(config)
     args.work.mkdir(parents=True, exist_ok=True)
     clip_dir = args.work / "clips"
     clip_dir.mkdir(parents=True, exist_ok=True)
@@ -157,11 +182,26 @@ def main() -> None:
     accepted = read_csv(accepted_path) if accepted_path.exists() else []
     ledger = read_csv(ledger_path) if ledger_path.exists() else []
     finished = {row["source_key"] for row in ledger}
+    for prior_path in args.prior_ledger:
+        if prior_path.exists():
+            finished.update(row["source_key"] for row in read_csv(prior_path)
+                            if not retryable_server_error(row))
     pending = round_robin([row for row in catalog if row["source_key"] not in finished])
     if args.max_sources:
         pending = pending[:args.max_sources]
     model = YOLO(args.model)
     youtube_engine.configure(config, args.device)
+    run_metadata = {
+        "scanner_revision": SCANNER_REVISION,
+        "config_fingerprint": fingerprint,
+        "slurm_job_id": os.environ.get("SLURM_JOB_ID", ""),
+        "started_at_utc": datetime.now(timezone.utc).isoformat(),
+        "shard_count": args.shard_count,
+        "shard_index": args.shard_index,
+        "prior_ledgers": [str(path) for path in args.prior_ledger],
+    }
+    (args.work / "run_metadata.json").write_text(
+        json.dumps(run_metadata, indent=2) + "\n", encoding="utf-8")
     deadline = time.monotonic() + args.hours * 3600
     examined = 0
     for row in pending:
@@ -222,7 +262,9 @@ def main() -> None:
         ledger.append({
             "source_key": row["source_key"], "stream_id": row["stream_id"], "name": row["name"],
             "capture_type": row["capture_type"], "country": row.get("country") or "",
-            "status": status, "reason": reason, "finished_at_utc": datetime.now(timezone.utc).isoformat(),
+            "status": status, "reason": reason, "scanner_revision": SCANNER_REVISION,
+            "config_fingerprint": fingerprint, "slurm_job_id": os.environ.get("SLURM_JOB_ID", ""),
+            "finished_at_utc": datetime.now(timezone.utc).isoformat(),
         })
         write_csv(accepted_path, accepted, ACCEPTED_FIELDS)
         write_csv(ledger_path, ledger, LEDGER_FIELDS)
