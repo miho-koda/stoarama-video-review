@@ -10,6 +10,7 @@ from pathlib import Path
 from overnight_scan import ACCEPTED_FIELDS, LEDGER_FIELDS, finalize
 from stoarama_pipeline.common import load_config, read_csv, write_csv
 from stoarama_pipeline.discover import CATALOG_FIELDS
+from stoarama_pipeline.link_audit import classify_link_failure, source_review_url
 
 
 FAILURE_FIELDS = list(dict.fromkeys(CATALOG_FIELDS + ["scan_error", "failure_class", "recommended_action"]))
@@ -53,12 +54,23 @@ def main() -> None:
         row["row_id"] = index
     unique_ledger = {row["source_key"]: row for row in ledger}
     ledger = list(unique_ledger.values())
+    catalog_by_key = {row["source_key"]: row for row in catalogs}
+    # Backfill link audit fields for ledgers written by workers that were
+    # already running when link auditing was introduced.
+    for row in ledger:
+        if row.get("status") == "error" and not row.get("link_failure_class"):
+            failure_class, action = classify_link_failure(row.get("reason") or "")
+            row["link_failure_class"] = failure_class
+            row["recommended_action"] = action
+            row["source_link_status"] = failure_class
+            row["resolved_source_url"] = source_review_url(catalog_by_key.get(row["source_key"], row))
+            if failure_class in {"permanently_unavailable", "restricted"}:
+                row["status"] = "invalid_source"
     args.output.mkdir(parents=True, exist_ok=True)
     write_csv(args.output / "scan_ledger.csv", ledger, LEDGER_FIELDS)
-    catalog_by_key = {row["source_key"]: row for row in catalogs}
     youtube_failures = []
     for row in ledger:
-        if row.get("capture_type") != "youtube_watch" or row.get("status") != "error":
+        if row.get("capture_type") != "youtube_watch" or row.get("status") not in {"error", "invalid_source"}:
             continue
         failure_class, action = classify_youtube_failure(row.get("reason") or "")
         youtube_failures.append({**catalog_by_key.get(row["source_key"], {}),
