@@ -106,7 +106,8 @@ def finalize(accepted: list[dict], work: Path, config: dict, remote: str) -> Non
     needs_mac = [row for row in accepted if row.get("capture_type") == "youtube_watch" and not row.get("drive_url")]
     write_csv(work / "needs_mac_download.csv", needs_mac, ACCEPTED_FIELDS)
     rclone = os.path.expanduser("~/.local/bin/rclone")
-    for name in ("review_balanced.csv", "selections_all.csv", "scan_ledger.csv", "needs_mac_download.csv", "run_summary.json"):
+    for name in ("review_balanced.csv", "selections_all.csv", "scan_ledger.csv", "needs_mac_download.csv",
+                 "youtube_failures.csv", "youtube_retry.csv", "run_summary.json"):
         source = work / name
         if source.exists():
             try:
