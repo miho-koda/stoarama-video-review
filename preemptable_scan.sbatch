@@ -14,6 +14,13 @@ cd "${STOARAMA_REPO:?Set STOARAMA_REPO}"
 mkdir -p work/overnight/logs
 module load community-modules
 module load ffmpeg/5.1.4
+prior_args=()
+IFS=: read -r -a prior_ledgers <<< "${STOARAMA_PRIOR_LEDGERS:-}"
+for ledger in "${prior_ledgers[@]}"; do
+  [[ -n "$ledger" ]] && prior_args+=(--prior-ledger "$ledger")
+done
+manifest_args=()
+[[ -n "${STOARAMA_SOURCE_MANIFEST:-}" ]] && manifest_args=(--source-manifest "$STOARAMA_SOURCE_MANIFEST")
 
 # The scanner atomically rewrites its ledger after every source. If Slurm
 # preempts and requeues this job, the new process skips every ledgered source;
@@ -26,5 +33,4 @@ module load ffmpeg/5.1.4
   --drive-remote "${STOARAMA_DRIVE_REMOTE:-pilotdrive:overnight_scan}" \
   --shard-count "${STOARAMA_SHARD_COUNT:?Set STOARAMA_SHARD_COUNT}" \
   --shard-index "${STOARAMA_SHARD_INDEX:?Set STOARAMA_SHARD_INDEX}" \
-  --prior-ledger work/overnight/shard_0/scan_ledger.csv \
-  --prior-ledger work/overnight/shard_1/scan_ledger.csv
+  "${prior_args[@]}" "${manifest_args[@]}"

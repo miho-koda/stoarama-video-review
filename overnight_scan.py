@@ -152,6 +152,8 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--shard-index", type=int, default=0)
     result.add_argument("--prior-ledger", action="append", type=Path, default=[],
                         help="Additional completed ledger to skip (repeatable)")
+    result.add_argument("--source-manifest", type=Path,
+                        help="Only process source_key values present in this frozen manifest")
     return result
 
 
@@ -171,6 +173,10 @@ def main() -> None:
         write_csv(catalog_path, catalog, CATALOG_FIELDS)
         print(f"catalog_records={len(catalog)}", flush=True)
     catalog = read_csv(catalog_path)
+    if args.source_manifest:
+        allowed = {row["source_key"] for row in read_csv(args.source_manifest)}
+        catalog = [row for row in catalog if row["source_key"] in allowed]
+        print(f"source_manifest={args.source_manifest} selected_sources={len(catalog)}", flush=True)
     if args.shard_count < 1 or not 0 <= args.shard_index < args.shard_count:
         raise SystemExit("shard-index must be between 0 and shard-count - 1")
     if args.shard_count > 1:
@@ -199,6 +205,7 @@ def main() -> None:
         "shard_count": args.shard_count,
         "shard_index": args.shard_index,
         "prior_ledgers": [str(path) for path in args.prior_ledger],
+        "source_manifest": str(args.source_manifest or ""),
     }
     (args.work / "run_metadata.json").write_text(
         json.dumps(run_metadata, indent=2) + "\n", encoding="utf-8")
