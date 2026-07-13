@@ -4,6 +4,31 @@ Public 150-second review page: https://miho-koda.github.io/stoarama-video-review
 
 Accepted pilot manifest: [`youtube_review_10.csv`](youtube_review_10.csv)
 
+## Preserve the ten pilot clips on macOS
+
+Install the local dependencies:
+
+```bash
+brew install ffmpeg rclone
+python3 -m pip install -U yt-dlp
+```
+
+Configure the target Drive folder once:
+
+```bash
+rclone config create pilotdrive drive scope drive root_folder_id 1ehjN57oBTWHeDukXDzprBtcl1XjGbzjk
+```
+
+Then download and upload the exact selected intervals:
+
+```bash
+python3 mac_download_pilot.py --browser chrome --upload
+```
+
+Use `--browser safari` when YouTube is authenticated in Safari. The script
+processes the oldest DVR intervals first, validates each MP4 duration, resumes
+past completed files, and writes `~/stoarama-pilot-clips/pilot_manifest.csv`.
+
 This tool finds reviewable, contiguous Stoarama video intervals suitable for the
 social-mixing pipeline. It does not retain source video: clips are downloaded to
 a temporary directory, sampled, and deleted.
