@@ -37,7 +37,13 @@ CLIPS = [
 
 class DVR:
     def __init__(self, video_id: str, browser: str):
-        options = {"quiet": True, "live_from_start": True, "skip_download": True}
+        options = {
+            "quiet": True,
+            "live_from_start": True,
+            "skip_download": True,
+            "js_runtimes": {"deno": {}},
+            "remote_components": {"ejs:github"},
+        }
         if browser != "none":
             options["cookiesfrombrowser"] = (browser,)
         url = f"https://www.youtube.com/watch?v={video_id}"

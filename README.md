@@ -9,8 +9,9 @@ Accepted pilot manifest: [`youtube_review_10.csv`](youtube_review_10.csv)
 Install the local dependencies:
 
 ```bash
-brew install ffmpeg rclone
-python3 -m pip install -U yt-dlp
+brew install ffmpeg rclone deno python@3.12
+python3.12 -m venv ~/.stoarama-env
+~/.stoarama-env/bin/pip install -U yt-dlp
 ```
 
 Configure the target Drive folder once:
@@ -22,7 +23,7 @@ rclone config create pilotdrive drive scope drive root_folder_id 1ehjN57oBTWHeDu
 Then download and upload the exact selected intervals:
 
 ```bash
-python3 mac_download_pilot.py --browser chrome --upload
+~/.stoarama-env/bin/python mac_download_pilot.py --browser chrome --upload
 ```
 
 Use `--browser safari` when YouTube is authenticated in Safari. The script
