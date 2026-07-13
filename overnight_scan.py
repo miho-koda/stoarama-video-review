@@ -133,7 +133,8 @@ def finalize(accepted: list[dict], work: Path, config: dict, remote: str) -> Non
     rclone = os.path.expanduser("~/.local/bin/rclone")
     for name in ("review_balanced.csv", "selections_all.csv", "scan_ledger.csv", "needs_mac_download.csv",
                  "youtube_failures.csv", "youtube_retry.csv", "invalid_links.csv",
-                 "temporary_link_failures.csv", "run_summary.json"):
+                 "temporary_link_failures.csv", "coverage_missing.csv", "server_repair.csv",
+                 "run_summary.json"):
         source = work / name
         if source.exists():
             try:

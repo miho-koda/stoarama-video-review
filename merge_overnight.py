@@ -7,7 +7,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
-from overnight_scan import ACCEPTED_FIELDS, LEDGER_FIELDS, finalize
+from overnight_scan import ACCEPTED_FIELDS, LEDGER_FIELDS, finalize, retryable_server_error
 from stoarama_pipeline.common import load_config, read_csv, write_csv
 from stoarama_pipeline.discover import CATALOG_FIELDS
 from stoarama_pipeline.link_audit import classify_link_failure, source_review_url
@@ -85,6 +85,13 @@ def main() -> None:
                                if row.get("link_failure_class") in {"temporary_failure", "extraction_failure"}]
     write_csv(args.output / "invalid_links.csv", invalid_links, LINK_FAILURE_FIELDS)
     write_csv(args.output / "temporary_link_failures.csv", temporary_link_failures, LINK_FAILURE_FIELDS)
+    ledger_by_key = {row["source_key"]: row for row in ledger}
+    coverage_missing = [{**row, "status": "unprocessed", "reason": "no final ledger result"}
+                        for key, row in catalog_by_key.items() if key not in ledger_by_key]
+    server_repair = [{**catalog_by_key.get(row["source_key"], {}), **row}
+                     for row in ledger if retryable_server_error(row)]
+    write_csv(args.output / "coverage_missing.csv", coverage_missing, LINK_FAILURE_FIELDS)
+    write_csv(args.output / "server_repair.csv", server_repair, LINK_FAILURE_FIELDS)
     summary = {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "shards": [str(path) for path in args.shards], "ledger_total": len(ledger),
@@ -95,6 +102,10 @@ def main() -> None:
         "youtube_failure_class_counts": dict(Counter(row["failure_class"] for row in youtube_failures)),
         "invalid_link_total": len(invalid_links),
         "temporary_link_failure_total": len(temporary_link_failures),
+        "catalog_total": len(catalog_by_key),
+        "coverage_missing_total": len(coverage_missing),
+        "server_repair_total": len(server_repair),
+        "coverage_complete": not coverage_missing,
         "ledger_status_counts": dict(Counter(row.get("status") for row in ledger)),
     }
     (args.output / "run_summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
