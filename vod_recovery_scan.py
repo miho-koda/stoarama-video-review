@@ -20,6 +20,7 @@ from overnight_scan import ACCEPTED_FIELDS, LEDGER_FIELDS, SCANNER_REVISION, con
 from stoarama_pipeline.common import duration_for_score, load_config, read_csv, write_csv
 from stoarama_pipeline.media import analyse_video, ffmpeg_executable, frame_metrics, trim_video
 
+COOKIE_FILE = ""
 
 def safe_name(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")[:70]
@@ -27,6 +28,8 @@ def safe_name(value: str) -> str:
 
 def resolve(row: dict) -> tuple[dict, dict]:
     options = {"quiet": True, "skip_download": True, "noplaylist": True}
+    if COOKIE_FILE:
+        options["cookiefile"] = COOKIE_FILE
     with yt_dlp.YoutubeDL(options) as ydl:
         info = ydl.extract_info(row["youtube_url"], download=False)
     duration = float(info.get("duration") or 0)
@@ -124,8 +127,11 @@ def main() -> None:
     parser.add_argument("--shard-count", type=int, default=1)
     parser.add_argument("--shard-index", type=int, default=0)
     parser.add_argument("--max-sources", type=int, default=0)
+    parser.add_argument("--cookies", default="", help="Netscape cookie file for authenticated YouTube extraction")
     args = parser.parse_args()
     from ultralytics import YOLO
+    global COOKIE_FILE
+    COOKIE_FILE = args.cookies
 
     config = load_config(args.config)
     args.work.mkdir(parents=True, exist_ok=True)

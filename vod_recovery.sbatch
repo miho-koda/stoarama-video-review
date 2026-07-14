@@ -14,6 +14,8 @@ cd "${STOARAMA_REPO:?Set STOARAMA_REPO}"
 mkdir -p work/overnight/logs
 module load community-modules
 module load ffmpeg/5.1.4
+cookie_args=()
+[[ -n "${STOARAMA_YOUTUBE_COOKIES:-}" ]] && cookie_args=(--cookies "$STOARAMA_YOUTUBE_COOKIES")
 "${STOARAMA_PYTHON:?Set STOARAMA_PYTHON}" vod_recovery_scan.py \
   --input "${STOARAMA_SOURCE_MANIFEST:?Set STOARAMA_SOURCE_MANIFEST}" \
   --work "${STOARAMA_WORK:?Set STOARAMA_WORK}" \
@@ -21,4 +23,5 @@ module load ffmpeg/5.1.4
   --device 0 \
   --drive-remote "${STOARAMA_DRIVE_REMOTE:?Set STOARAMA_DRIVE_REMOTE}" \
   --shard-count "${STOARAMA_SHARD_COUNT:?Set STOARAMA_SHARD_COUNT}" \
-  --shard-index "${STOARAMA_SHARD_INDEX:?Set STOARAMA_SHARD_INDEX}"
+  --shard-index "${STOARAMA_SHARD_INDEX:?Set STOARAMA_SHARD_INDEX}" \
+  "${cookie_args[@]}"
