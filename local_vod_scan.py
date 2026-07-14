@@ -299,18 +299,39 @@ def analyse_frames(frames: list[np.ndarray], model, config: dict, device: str, f
             **stability}
 
 
-def coarse_candidates(proxy: Path, duration: float, model, config: dict, device: str) -> list[dict]:
+def coarse_diagnostic_reason(summary: dict) -> str:
+    """Compact, ledger-safe explanation when proxy ranking finds no window."""
+    return ("no_promising_windows:windows={windows};decoded={decoded};daylight={daylight};"
+            "density={density};eligible={eligible};best_daylight={best_daylight:.3f};"
+            "people_median_range={people_min:.1f}-{people_max:.1f}").format(**summary)
+
+
+def coarse_candidates(proxy: Path, duration: float, model, config: dict, device: str) -> tuple[list[dict], dict]:
     ranked = []
-    for start, length in overlapping_windows(duration):
+    windows = overlapping_windows(duration)
+    summary = {"windows": len(windows), "decoded": 0, "daylight": 0, "density": 0, "eligible": 0,
+               "best_daylight": 0.0, "people_min": 0.0, "people_max": 0.0}
+    observed_people = []
+    for start, length in windows:
         frames = frames_at(proxy, start, length, 8)
         if not frames: continue
         # Scale the established 60 px at 720p rule for the low-resolution proxy.
         threshold = max(16, LOCAL_MIN_PERSON_HEIGHT_PX * frames[0].shape[0] / 720)
         proxy_config = {**config, "min_person_height_px": threshold}
         metrics = analyse_frames(frames, model, proxy_config, device, full=False, person_threshold=threshold)
-        if metrics and metrics["daylight_fraction"] >= .5 and 2 <= metrics["people_median"] <= 30:
+        if not metrics: continue
+        summary["decoded"] += 1
+        summary["best_daylight"] = max(summary["best_daylight"], float(metrics["daylight_fraction"]))
+        observed_people.append(float(metrics["people_median"]))
+        daylight_ok = metrics["daylight_fraction"] >= .5
+        density_ok = 2 <= metrics["people_median"] <= 30
+        summary["daylight"] += int(daylight_ok); summary["density"] += int(density_ok)
+        if daylight_ok and density_ok:
+            summary["eligible"] += 1
             ranked.append({"start": start, "duration": length, **metrics})
-    return sorted(ranked, key=lambda row: row["score"], reverse=True)[:6]
+    if observed_people:
+        summary["people_min"] = min(observed_people); summary["people_max"] = max(observed_people)
+    return sorted(ranked, key=lambda row: row["score"], reverse=True)[:6], summary
 
 
 def headers(fmt: dict) -> list[str]:
@@ -389,8 +410,8 @@ class Scanner:
         proxy_fmt = select_proxy_format(info.get("formats", []), duration)
         proxy = self.paths.current / f"{row['video_id']}.proxy.mp4"
         got = download_proxy(row, proxy_fmt, self.args.browser, proxy); self.downloaded += got; self.update_peak()
-        shortlist = coarse_candidates(proxy, duration, self.model, self.config, self.device)
-        if not shortlist: raise ValueError("no_promising_windows")
+        shortlist, coarse_summary = coarse_candidates(proxy, duration, self.model, self.config, self.device)
+        if not shortlist: raise ValueError(coarse_diagnostic_reason(coarse_summary))
         fmt = select_candidate_format(info.get("formats", [])); passing = []; last_rejection = "quality_threshold"
         for index, coarse in enumerate(shortlist):
             candidate = self.paths.current / f"candidate-{index}.mp4"

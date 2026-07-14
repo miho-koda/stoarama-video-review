@@ -79,6 +79,11 @@ The work directory contains:
 These are review candidates. Never merge them automatically into the accepted
 40-row dataset.
 
+When a source is rejected before full-resolution download, its ledger reason
+now includes the coarse proxy-window count, decode count, daylight/density
+counts, and observed daylight and median-people range. Use that evidence to
+diagnose a weak VOD before changing a general acceptance threshold.
+
 Run local tests with `python -m pytest -q test_local_vod_scan.py`. Pilot
 acceptance additionally requires no isolated frames, peak use below 3 GiB,
 clickable Drive clips of exactly 90/120/150 seconds, and no excluded scene

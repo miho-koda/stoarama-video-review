@@ -29,6 +29,14 @@ def test_overlapping_windows_cover_tail():
     assert scan.overlapping_windows(149) == []
 
 
+def test_coarse_rejection_reason_explains_the_proxy_screen():
+    detail = scan.coarse_diagnostic_reason({"windows": 8, "decoded": 8, "daylight": 1, "density": 2,
+                                            "eligible": 0, "best_daylight": .625, "people_min": 0,
+                                            "people_max": 42})
+    assert detail == ("no_promising_windows:windows=8;decoded=8;daylight=1;density=2;eligible=0;"
+                      "best_daylight=0.625;people_median_range=0.0-42.0")
+
+
 def test_duration_policy_and_top_two_non_overlap():
     config = {"duration_policy": {"excellent_min_score": 5.5, "excellent_seconds": 150,
                                   "good_min_score": 4, "good_seconds": 120, "accepted_seconds": 90}}
