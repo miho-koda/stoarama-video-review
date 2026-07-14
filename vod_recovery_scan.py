@@ -18,9 +18,14 @@ import yt_dlp
 
 from overnight_scan import ACCEPTED_FIELDS, LEDGER_FIELDS, SCANNER_REVISION, config_fingerprint, finalize, upload
 from stoarama_pipeline.common import duration_for_score, load_config, read_csv, write_csv
-from stoarama_pipeline.media import analyse_video, ffmpeg_executable, frame_metrics, trim_video
+from stoarama_pipeline.media import analyse_video, frame_metrics, trim_video
 
 COOKIE_FILE = ""
+
+
+def vod_ffmpeg_executable() -> str:
+    import imageio_ffmpeg
+    return imageio_ffmpeg.get_ffmpeg_exe()
 
 def safe_name(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")[:70]
@@ -55,7 +60,7 @@ def headers_argument(fmt: dict) -> list[str]:
 
 
 def frame_at(fmt: dict, offset: float, target: Path) -> np.ndarray | None:
-    command = [ffmpeg_executable(), "-hide_banner", "-loglevel", "error", "-y", "-ss", str(offset),
+    command = [vod_ffmpeg_executable(), "-hide_banner", "-loglevel", "error", "-y", "-ss", str(offset),
                *headers_argument(fmt), "-i", fmt["url"], "-frames:v", "1", "-q:v", "3", str(target)]
     subprocess.run(command, check=True, timeout=75)
     return cv2.imread(str(target))
@@ -63,7 +68,7 @@ def frame_at(fmt: dict, offset: float, target: Path) -> np.ndarray | None:
 
 def download_window(fmt: dict, offset: float, duration: int, target: Path) -> None:
     subprocess.run([
-        ffmpeg_executable(), "-hide_banner", "-loglevel", "error", "-y", "-ss", str(offset),
+        vod_ffmpeg_executable(), "-hide_banner", "-loglevel", "error", "-y", "-ss", str(offset),
         *headers_argument(fmt), "-i", fmt["url"], "-t", str(duration), "-an", "-c:v", "mpeg4",
         "-q:v", "5", "-movflags", "+faststart", str(target),
     ], check=True, timeout=duration + 150)
