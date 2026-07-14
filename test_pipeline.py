@@ -8,11 +8,32 @@ from pathlib import Path
 from unittest.mock import patch
 
 from stoarama_pipeline.common import duration_for_score, youtube_id
+from stoarama_pipeline.link_audit import classify_link_failure, validate_source_link
 from stoarama_pipeline.discover import discover
 from stoarama_pipeline.validate import validate_selection
 
 
 class PipelineTests(unittest.TestCase):
+    def test_link_audit_rejects_malformed_source(self):
+        status, resolved, reason = validate_source_link({
+            "capture_type": "hls", "source_url": "not a url",
+        })
+        self.assertEqual(status, "malformed")
+        self.assertEqual(resolved, "not a url")
+        self.assertIn("HTTP", reason)
+
+    def test_link_failure_classification(self):
+        cases = {
+            "ERROR: Video unavailable": ("permanently_unavailable", "do_not_retry_unless_source_changes"),
+            "ERROR: Private video": ("restricted", "do_not_retry_without_access_change"),
+            "Sign in to confirm you’re not a bot": ("auth_or_bot_block", "retry_on_mac_with_browser_cookies"),
+            "HTTP Error 429: Too Many Requests": ("temporary_failure", "retry_with_backoff"),
+            "Connection timed out": ("temporary_failure", "retry_with_backoff"),
+        }
+        for message, expected in cases.items():
+            with self.subTest(message=message):
+                self.assertEqual(classify_link_failure(message), expected)
+
     def test_youtube_id_variants(self):
         self.assertEqual(youtube_id("https://www.youtube.com/watch?v=_0wPODlF9wU"), "_0wPODlF9wU")
         self.assertEqual(youtube_id("https://youtu.be/_0wPODlF9wU"), "_0wPODlF9wU")

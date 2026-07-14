@@ -1,9 +1,8 @@
 # Stoarama social-mixing video pipeline
 
-This repository turns the live Stoarama YouTube catalog into reviewable,
-timestamped social-mixing clips and metadata. It is a two-stage workflow because
-YouTube permits scanning on the GPU server but may block bulk video retrieval
-from cloud IPs.
+This repository turns Stoarama's YouTube, HLS, and HTTP-video catalog into
+reviewable, timestamped social-mixing clips and metadata. YouTube preservation
+can still require a Mac when cloud IPs are blocked.
 
 Use Python 3.11 or newer for both stages.
 
@@ -111,7 +110,78 @@ MP4s, enables yt-dlp's Deno/EJS challenge solver, validates encoded duration,
 uploads each clip, creates a Drive link, and writes `pilot_manifest.csv` with
 UTC/local timestamps and source metadata.
 
+## Overnight all-source scan
+
+`overnight_scan.py` inventories all motion-video source types, interleaves
+countries, searches existing Stoarama recordings before trying a live capture,
+and checkpoints after every source. Accepted MP4s are cached under
+`work/overnight/clips/` and uploaded to the configured Drive remote. YouTube
+selections that cannot be preserved on the server are written to
+`needs_mac_download.csv`.
+
+Submit two independent six-hour shards concurrently, then merge their outputs:
+
+```bash
+mkdir -p work/overnight/logs
+export STOARAMA_REPO="$PWD"
+export STOARAMA_PYTHON="$HOME/.stoarama-server-env/bin/python"
+export STOARAMA_MODEL="/absolute/path/to/yolo26n.pt"
+export STOARAMA_SHARD_COUNT=2
+export STOARAMA_WORK=work/overnight/shard_0
+export STOARAMA_DRIVE_REMOTE=pilotdrive:overnight_scan/shard_0
+export STOARAMA_SHARD_INDEX=0
+first=$(sbatch --parsable overnight_scan.sbatch)
+export STOARAMA_WORK=work/overnight/shard_1
+export STOARAMA_DRIVE_REMOTE=pilotdrive:overnight_scan/shard_1
+export STOARAMA_SHARD_INDEX=1
+second=$(sbatch --parsable overnight_scan.sbatch)
+sbatch --dependency="afterany:$first:$second" merge_overnight.sbatch
+```
+
+Morning outputs are `review_balanced.csv`, `selections_all.csv`,
+`scan_ledger.csv`, and `needs_mac_download.csv`. The balanced review contains
+at most 80 verified Drive clips and caps each country at five rows.
+
 ## Reproducibility and safety
+
+## Mac/Drive/GPU VOD recovery
+
+YouTube VOD access blocked from the cluster is handled without copying browser
+credentials to MIT. The Mac fetches sparse frames, the GPU ranks them, and the
+Mac preserves only the final selections. Every stage is resumable.
+
+Start the three-video pilot on the Mac:
+
+```bash
+python mac_vod_exchange.py coarse \
+  --manifest vod_fixed_camera_priority.csv \
+  --browser "chrome:Profile 1" \
+  --video-ids ElW4dUFEpuE,3W0yKMCLiIs,UwdghOblns0 \
+  --remote pilotdrive:vod_exchange
+```
+
+After the GPU publishes `coarse_shortlist.csv`, download it and fetch the
+candidate-window frame packs:
+
+```bash
+rclone copyto pilotdrive:vod_exchange/coarse_shortlist.csv ~/stoarama-vod-exchange/coarse_shortlist.csv
+python mac_vod_exchange.py candidates \
+  --input ~/stoarama-vod-exchange/coarse_shortlist.csv \
+  --browser "chrome:Profile 1" --remote pilotdrive:vod_exchange
+```
+
+After the GPU publishes `final_selections.csv`, preserve only those clips:
+
+```bash
+rclone copyto pilotdrive:vod_exchange/final_selections.csv ~/stoarama-vod-exchange/final_selections.csv
+python mac_vod_exchange.py preserve \
+  --input ~/stoarama-vod-exchange/final_selections.csv \
+  --browser "chrome:Profile 1" --remote pilotdrive:vod_exchange
+```
+
+The final output is `~/stoarama-vod-exchange/final_manifest.csv`. Recording
+UTC is populated only when YouTube supplies a release timestamp; offsets remain
+the authoritative reproducibility fields.
 
 - No Google, YouTube, or rclone credentials are stored in this repository.
 - `work/`, clips, cookies, model weights, caches, and rclone configuration are
