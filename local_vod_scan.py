@@ -32,16 +32,27 @@ GIB = 1024 ** 3
 PROXY_CAP = 2 * GIB
 WORK_CAP = 3 * GIB
 PILOT_IDS = ("ElW4dUFEpuE", "3W0yKMCLiIs", "UwdghOblns0")
-REVISION = "local-vod-scan-v1"
+REVISION = "local-vod-scan-v2"
 ROOT = Path(__file__).resolve().parent
 DEFAULT_MANIFEST = ROOT / "manifests" / "vod_fixed_camera_priority.csv"
+
+# These are intentionally stricter than the historical server pipeline. The
+# first pilot showed that 60 px people and sparse viewpoint checks are not
+# sufficient for manual social-mixing review.
+LOCAL_MIN_PERSON_HEIGHT_PX = 80
+LOCAL_PERSON_SIZE_FRACTION = .85
+LOCAL_FIXED_CAMERA_MIN = .80
+LOCAL_DENSE_STABILITY_MIN = .85
+MIN_CLIP_GAP_SECONDS = 300
 
 REVIEW_FIELDS = [
     "source_key", "video_id", "name", "city", "region", "country", "location_text",
     "youtube_url", "youtube_review_url", "drive_path", "drive_link", "segment_start_offset_seconds",
     "segment_end_offset_seconds", "recording_start_utc", "segment_start_utc", "segment_end_utc",
     "recording_time_source", "recording_time_confidence", "duration_seconds", "score", "people_min",
-    "people_median", "people_max", "people_ge60_fraction", "daylight_fraction", "fixed_camera_score",
+    "people_median", "people_max", "people_ge60_fraction", "people_ge80_fraction", "person_height_p25_px",
+    "person_height_median_px", "daylight_fraction", "fixed_camera_score", "dense_stability_score",
+    "camera_motion_median_px", "camera_motion_max_px",
     "social_pair_score", "active_density_fraction", "vehicles_total", "camera_assessment",
     "camera_height_confidence", "ptz_assessment", "public_access_warning", "run_revision",
 ]
@@ -110,11 +121,12 @@ def overlapping_windows(duration: float, length: int = 150, overlap: int = 30) -
     return [(round(float(start), 3), float(length)) for start in starts]
 
 
-def choose_non_overlapping(candidates: list[dict], limit: int = 2) -> list[dict]:
+def choose_non_overlapping(candidates: list[dict], limit: int = 2, minimum_gap: float = MIN_CLIP_GAP_SECONDS) -> list[dict]:
     selected = []
     for item in sorted(candidates, key=lambda row: float(row["score"]), reverse=True):
         start, end = float(item["start"]), float(item["start"]) + float(item["duration"])
-        if all(end <= float(old["start"]) or start >= float(old["start"]) + float(old["duration"]) for old in selected):
+        if all(end + minimum_gap <= float(old["start"]) or start >= float(old["start"]) + float(old["duration"]) + minimum_gap
+               for old in selected):
             selected.append(item)
             if len(selected) == limit:
                 break
@@ -135,11 +147,12 @@ def derive_timestamps(info: dict, offset: float, duration: int) -> dict:
 
 def classify_rejection(metrics: dict | None) -> str:
     if not metrics: return "decode_failure"
-    if metrics.get("fixed_camera_score", 0) < .65: return "ptz_or_moving_camera"
+    if metrics.get("fixed_camera_score", 0) < LOCAL_FIXED_CAMERA_MIN or metrics.get("dense_stability_score", 0) < LOCAL_DENSE_STABILITY_MIN:
+        return "ptz_or_moving_camera"
     if metrics.get("camera_assessment") == "obvious_high_view": return "obvious_high_camera"
     if metrics.get("daylight_fraction", 0) < .75: return "night_or_low_light"
     if metrics.get("people_max", 999) > 30: return "excessive_crowd"
-    if metrics.get("people_ge60_fraction", 0) < .7: return "undersized_people"
+    if metrics.get("people_ge80_fraction", 0) < LOCAL_PERSON_SIZE_FRACTION: return "undersized_people"
     if metrics.get("vehicles_total", 0) >= metrics.get("people_total", 0): return "traffic_dominant"
     return "quality_threshold"
 
@@ -181,6 +194,45 @@ def frames_at(path: Path, start: float, duration: float, samples: int) -> list[n
     return frames
 
 
+def camera_stability_metrics(path: Path, start: float, duration: float) -> dict:
+    """Measure viewpoint motion in short, dense bursts across a candidate.
+
+    The old 10-second samples could score a moving camera as fixed. Here each
+    burst compares frames 0.5 seconds apart and estimates global affine motion
+    with RANSAC, so foreground walkers are less likely to dominate the score.
+    """
+    capture = cv2.VideoCapture(str(path)); motions = []
+    burst_starts = np.linspace(start + 8, start + max(8, duration - 10), 5)
+    for burst in burst_starts:
+        gray_frames = []
+        for second in np.arange(float(burst), float(burst) + 2.0, .5):
+            capture.set(cv2.CAP_PROP_POS_MSEC, second * 1000)
+            ok, frame = capture.read()
+            if not ok: continue
+            scale = min(1.0, 480.0 / frame.shape[1])
+            if scale != 1.0:
+                frame = cv2.resize(frame, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+            gray_frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
+        for previous, current in zip(gray_frames, gray_frames[1:]):
+            points = cv2.goodFeaturesToTrack(previous, 400, .01, 8)
+            if points is None or len(points) < 30: continue
+            tracked, status, _ = cv2.calcOpticalFlowPyrLK(previous, current, points, None)
+            valid = status.reshape(-1).astype(bool)
+            if valid.sum() < 30: continue
+            transform, inliers = cv2.estimateAffinePartial2D(points[valid], tracked[valid], method=cv2.RANSAC,
+                                                               ransacReprojThreshold=1.5)
+            if transform is None or inliers is None or int(inliers.sum()) < 20: continue
+            dx, dy = float(transform[0, 2]), float(transform[1, 2])
+            motions.append(math.hypot(dx, dy))
+    capture.release()
+    if len(motions) < 6:
+        return {"dense_stability_score": 0.0, "camera_motion_median_px": float("inf"), "camera_motion_max_px": float("inf")}
+    median = float(np.median(motions)); maximum = float(np.max(motions))
+    # At 480 px wide, <= 1.25 px per 0.5 s is a conservative fixed-view gate.
+    stable = float(np.mean(np.asarray(motions) <= 1.25))
+    return {"dense_stability_score": stable, "camera_motion_median_px": median, "camera_motion_max_px": maximum}
+
+
 def perspective_assessment(stats: list[dict]) -> tuple[str, str]:
     # Without calibration this only rejects the clearest distant/high-angle cases.
     heights = [h for stat in stats for h in stat["all_heights"]]
@@ -190,23 +242,30 @@ def perspective_assessment(stats: list[dict]) -> tuple[str, str]:
 
 
 def analyse_frames(frames: list[np.ndarray], model, config: dict, device: str, full: bool,
-                   person_threshold: float = 60) -> dict | None:
+                   person_threshold: float = LOCAL_MIN_PERSON_HEIGHT_PX, stability: dict | None = None) -> dict | None:
     if len(frames) < (12 if full else 5): return None
     stats = [frame_metrics(model, frame, config, device) for frame in frames]
     counts = [s["people"] for s in stats]; heights = [h for s in stats for h in s["all_heights"]]
     usable = float(np.mean([2 <= count <= 30 for count in counts]))
+    ge60 = float(np.mean([h >= 60 for h in heights])) if heights else 0
     sized = float(np.mean([h >= person_threshold for h in heights])) if heights else 0
     daylight = float(np.mean([s["daylight"] >= .52 for s in stats]))
     fixed = fixed_camera_score(frames); vehicles = sum(s["vehicles"] for s in stats); people_total = sum(counts)
     pairs = float(np.mean([min(s["pairs"], 8) / 8 for s in stats])); active = float(np.mean([5 <= c <= 22 for c in counts]))
     camera, confidence = perspective_assessment(stats)
+    stability = stability or {"dense_stability_score": 1.0, "camera_motion_median_px": 0.0, "camera_motion_max_px": 0.0}
     score = 2 * active + pairs + daylight + sized + fixed - abs(float(np.median(counts)) - 12) / 20 - max(0, max(counts) - 25) / 10
-    passed = usable >= .8 and sized >= .7 and daylight >= .75 and fixed >= .65 and people_total > vehicles and camera != "obvious_high_view"
+    passed = (usable >= .8 and sized >= LOCAL_PERSON_SIZE_FRACTION and daylight >= .75
+              and fixed >= LOCAL_FIXED_CAMERA_MIN and stability["dense_stability_score"] >= LOCAL_DENSE_STABILITY_MIN
+              and people_total > vehicles and camera != "obvious_high_view")
     return {"passed": passed, "score": score, "people_min": min(counts), "people_median": float(np.median(counts)),
-            "people_max": max(counts), "people_total": people_total, "people_ge60_fraction": sized,
+            "people_max": max(counts), "people_total": people_total, "people_ge60_fraction": ge60,
+            "people_ge80_fraction": sized, "person_height_p25_px": float(np.percentile(heights, 25)) if heights else 0.0,
+            "person_height_median_px": float(np.median(heights)) if heights else 0.0,
             "daylight_fraction": daylight, "fixed_camera_score": fixed, "social_pair_score": pairs,
             "active_density_fraction": active, "vehicles_total": vehicles, "camera_assessment": camera,
-            "camera_height_confidence": confidence, "ptz_assessment": "fixed" if fixed >= .65 else "moving_or_ptz"}
+            "camera_height_confidence": confidence, "ptz_assessment": "fixed" if fixed >= LOCAL_FIXED_CAMERA_MIN and stability["dense_stability_score"] >= LOCAL_DENSE_STABILITY_MIN else "moving_or_ptz",
+            **stability}
 
 
 def coarse_candidates(proxy: Path, duration: float, model, config: dict, device: str) -> list[dict]:
@@ -214,8 +273,8 @@ def coarse_candidates(proxy: Path, duration: float, model, config: dict, device:
     for start, length in overlapping_windows(duration):
         frames = frames_at(proxy, start, length, 8)
         if not frames: continue
-        # Scale the established 60 px at 720p rule for the low-resolution proxy.
-        threshold = max(12, 60 * frames[0].shape[0] / 720)
+        # Scale the local 80 px at 720p rule for the low-resolution proxy.
+        threshold = max(16, LOCAL_MIN_PERSON_HEIGHT_PX * frames[0].shape[0] / 720)
         proxy_config = {**config, "min_person_height_px": threshold}
         metrics = analyse_frames(frames, model, proxy_config, device, full=False, person_threshold=threshold)
         if metrics and metrics["daylight_fraction"] >= .5 and 2 <= metrics["people_median"] <= 30:
@@ -305,7 +364,9 @@ class Scanner:
         for index, coarse in enumerate(shortlist):
             candidate = self.paths.current / f"candidate-{index}.mp4"
             got = fetch_clip(fmt, coarse["start"], 150, candidate); self.downloaded += got; self.update_peak()
-            metrics = analyse_frames(frames_at(candidate, 0, 150, 15), self.model, self.config, self.device, full=True)
+            stability = camera_stability_metrics(candidate, 0, 150)
+            metrics = analyse_frames(frames_at(candidate, 0, 150, 15), self.model, self.config, self.device,
+                                     full=True, stability=stability)
             if metrics and metrics["passed"]:
                 passing.append({"start": coarse["start"], "duration": duration_for_score(metrics["score"], self.config), **metrics, "path": candidate})
             else:

@@ -51,9 +51,11 @@ and free disk.
 
 ## Acceptance and outputs
 
-The scanner uses `yolo26n.pt` and the existing thresholds: daylight, 2–30
-people, at least 70% of people 60 px or taller at 720p, people over vehicles,
-fixed-camera score, density, and social-pair ranking. PTZ/moving, night,
+The scanner uses `yolo26n.pt` and conservative local thresholds: daylight,
+2–30 people, at least 85% of people 80 px or taller at 720p, people over
+vehicles, fixed-camera score, and dense short-burst background-motion checks.
+It records median/lower-quartile person height and requires a five-minute gap
+between two clips from one source. PTZ/moving, night,
 traffic-dominant, excessive-crowd, undersized-person, and obvious high-view
 candidates are rejected. Depth Anything V3 is deliberately deferred. Camera
 height is a conservative perspective heuristic with `heuristic` confidence;

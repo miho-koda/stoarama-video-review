@@ -35,7 +35,13 @@ def test_duration_policy_and_top_two_non_overlap():
     assert [scan.duration_for_score(score, config) for score in (3, 4, 5.5)] == [90, 120, 150]
     rows = [{"start": 0, "duration": 150, "score": 9}, {"start": 30, "duration": 90, "score": 8},
             {"start": 151, "duration": 90, "score": 7}]
-    assert [row["start"] for row in scan.choose_non_overlapping(rows)] == [0, 151]
+    assert [row["start"] for row in scan.choose_non_overlapping(rows, minimum_gap=0)] == [0, 151]
+
+
+def test_top_two_requires_meaningful_separation():
+    rows = [{"start": 0, "duration": 120, "score": 9}, {"start": 120, "duration": 120, "score": 8},
+            {"start": 421, "duration": 120, "score": 7}]
+    assert [row["start"] for row in scan.choose_non_overlapping(rows)] == [0, 421]
 
 
 def test_timestamp_derivation_is_conservative():
@@ -52,13 +58,30 @@ def test_timestamp_derivation_is_conservative():
     ("camera_assessment", "obvious_high_view", "obvious_high_camera"),
     ("daylight_fraction", .2, "night_or_low_light"),
     ("people_max", 31, "excessive_crowd"),
-    ("people_ge60_fraction", .2, "undersized_people"),
+    ("people_ge80_fraction", .2, "undersized_people"),
 ])
 def test_rejection_classification(field, value, expected):
     metrics = {"fixed_camera_score": 1, "camera_assessment": "not_obviously_high", "daylight_fraction": 1,
-               "people_max": 10, "people_ge60_fraction": 1, "vehicles_total": 0, "people_total": 10}
+               "people_max": 10, "people_ge80_fraction": 1, "dense_stability_score": 1, "vehicles_total": 0, "people_total": 10}
     metrics[field] = value
     assert scan.classify_rejection(metrics) == expected
+
+
+def test_dense_camera_motion_rejects_an_otherwise_good_clip():
+    metrics = {"fixed_camera_score": 1, "dense_stability_score": .2, "camera_assessment": "not_obviously_high",
+               "daylight_fraction": 1, "people_max": 10, "people_ge80_fraction": 1, "vehicles_total": 0, "people_total": 10}
+    assert scan.classify_rejection(metrics) == "ptz_or_moving_camera"
+
+
+def test_person_size_metrics_use_80px_acceptance_threshold(monkeypatch):
+    frame = __import__("numpy").zeros((100, 100, 3), dtype="uint8")
+    stats = [{"people": 5, "vehicles": 0, "pairs": 1, "daylight": 1, "all_heights": [70, 85, 90, 95, 100]}] * 12
+    monkeypatch.setattr(scan, "frame_metrics", lambda *args: stats[0])
+    monkeypatch.setattr(scan, "fixed_camera_score", lambda frames: 1)
+    metrics = scan.analyse_frames([frame] * 12, object(), {}, "cpu", full=True)
+    assert metrics["people_ge60_fraction"] == 1
+    assert metrics["people_ge80_fraction"] == .8
+    assert not metrics["passed"]
 
 
 def test_atomic_resume_skips_completed_source(tmp_path: Path):
