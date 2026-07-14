@@ -27,7 +27,10 @@ def safe_name(value: str) -> str:
 
 
 def resolve(row: dict) -> tuple[dict, dict]:
-    options = {"quiet": True, "skip_download": True, "noplaylist": True}
+    options = {
+        "quiet": True, "skip_download": True, "noplaylist": True,
+        "js_runtimes": {"deno": {}}, "remote_components": {"ejs:github"},
+    }
     if COOKIE_FILE:
         options["cookiefile"] = COOKIE_FILE
     with yt_dlp.YoutubeDL(options) as ydl:
