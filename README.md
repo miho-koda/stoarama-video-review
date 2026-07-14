@@ -144,6 +144,45 @@ at most 80 verified Drive clips and caps each country at five rows.
 
 ## Reproducibility and safety
 
+## Mac/Drive/GPU VOD recovery
+
+YouTube VOD access blocked from the cluster is handled without copying browser
+credentials to MIT. The Mac fetches sparse frames, the GPU ranks them, and the
+Mac preserves only the final selections. Every stage is resumable.
+
+Start the three-video pilot on the Mac:
+
+```bash
+python mac_vod_exchange.py coarse \
+  --manifest vod_fixed_camera_priority.csv \
+  --browser "chrome:Profile 1" \
+  --video-ids ElW4dUFEpuE,3W0yKMCLiIs,UwdghOblns0 \
+  --remote pilotdrive:vod_exchange
+```
+
+After the GPU publishes `coarse_shortlist.csv`, download it and fetch the
+candidate-window frame packs:
+
+```bash
+rclone copyto pilotdrive:vod_exchange/coarse_shortlist.csv ~/stoarama-vod-exchange/coarse_shortlist.csv
+python mac_vod_exchange.py candidates \
+  --input ~/stoarama-vod-exchange/coarse_shortlist.csv \
+  --browser "chrome:Profile 1" --remote pilotdrive:vod_exchange
+```
+
+After the GPU publishes `final_selections.csv`, preserve only those clips:
+
+```bash
+rclone copyto pilotdrive:vod_exchange/final_selections.csv ~/stoarama-vod-exchange/final_selections.csv
+python mac_vod_exchange.py preserve \
+  --input ~/stoarama-vod-exchange/final_selections.csv \
+  --browser "chrome:Profile 1" --remote pilotdrive:vod_exchange
+```
+
+The final output is `~/stoarama-vod-exchange/final_manifest.csv`. Recording
+UTC is populated only when YouTube supplies a release timestamp; offsets remain
+the authoritative reproducibility fields.
+
 - No Google, YouTube, or rclone credentials are stored in this repository.
 - `work/`, clips, cookies, model weights, caches, and rclone configuration are
   ignored by Git.
