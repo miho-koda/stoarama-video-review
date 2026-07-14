@@ -32,15 +32,15 @@ GIB = 1024 ** 3
 PROXY_CAP = 2 * GIB
 WORK_CAP = 3 * GIB
 PILOT_IDS = ("ElW4dUFEpuE", "3W0yKMCLiIs", "UwdghOblns0")
-REVISION = "local-vod-scan-v2"
+REVISION = "local-vod-scan-v3"
 ROOT = Path(__file__).resolve().parent
 DEFAULT_MANIFEST = ROOT / "manifests" / "vod_fixed_camera_priority.csv"
 
-# These are intentionally stricter than the historical server pipeline. The
-# first pilot showed that 60 px people and sparse viewpoint checks are not
-# sufficient for manual social-mixing review.
-LOCAL_MIN_PERSON_HEIGHT_PX = 80
-LOCAL_PERSON_SIZE_FRACTION = .85
+# Keep the established acceptance floor: it is resolution-specific, not a
+# universal preference for close views. The pilot problem was that global
+# aggregation hid the distribution of smaller detections, so we now report it.
+LOCAL_MIN_PERSON_HEIGHT_PX = 60
+LOCAL_PERSON_SIZE_FRACTION = .70
 LOCAL_FIXED_CAMERA_MIN = .80
 LOCAL_DENSE_STABILITY_MIN = .85
 MIN_CLIP_GAP_SECONDS = 300
@@ -50,8 +50,8 @@ REVIEW_FIELDS = [
     "youtube_url", "youtube_review_url", "drive_path", "drive_link", "segment_start_offset_seconds",
     "segment_end_offset_seconds", "recording_start_utc", "segment_start_utc", "segment_end_utc",
     "recording_time_source", "recording_time_confidence", "duration_seconds", "score", "people_min",
-    "people_median", "people_max", "people_ge60_fraction", "people_ge80_fraction", "person_height_p25_px",
-    "person_height_median_px", "daylight_fraction", "fixed_camera_score", "dense_stability_score",
+    "people_median", "people_max", "people_ge60_fraction", "people_ge80_fraction", "size_frame_pass_fraction",
+    "small_people_frame_fraction", "person_height_p25_px", "person_height_median_px", "daylight_fraction", "fixed_camera_score", "dense_stability_score",
     "camera_motion_median_px", "camera_motion_max_px",
     "social_pair_score", "active_density_fraction", "vehicles_total", "camera_assessment",
     "camera_height_confidence", "ptz_assessment", "public_access_warning", "run_revision",
@@ -152,7 +152,7 @@ def classify_rejection(metrics: dict | None) -> str:
     if metrics.get("camera_assessment") == "obvious_high_view": return "obvious_high_camera"
     if metrics.get("daylight_fraction", 0) < .75: return "night_or_low_light"
     if metrics.get("people_max", 999) > 30: return "excessive_crowd"
-    if metrics.get("people_ge80_fraction", 0) < LOCAL_PERSON_SIZE_FRACTION: return "undersized_people"
+    if metrics.get("people_ge60_fraction", 0) < LOCAL_PERSON_SIZE_FRACTION: return "undersized_people"
     if metrics.get("vehicles_total", 0) >= metrics.get("people_total", 0): return "traffic_dominant"
     return "quality_threshold"
 
@@ -248,7 +248,12 @@ def analyse_frames(frames: list[np.ndarray], model, config: dict, device: str, f
     counts = [s["people"] for s in stats]; heights = [h for s in stats for h in s["all_heights"]]
     usable = float(np.mean([2 <= count <= 30 for count in counts]))
     ge60 = float(np.mean([h >= 60 for h in heights])) if heights else 0
+    ge80 = float(np.mean([h >= 80 for h in heights])) if heights else 0
     sized = float(np.mean([h >= person_threshold for h in heights])) if heights else 0
+    per_frame_size = [float(np.mean([h >= person_threshold for h in item["all_heights"]])) if item["all_heights"] else 0.0
+                      for item in stats]
+    size_frame_pass = float(np.mean([value >= LOCAL_PERSON_SIZE_FRACTION for value in per_frame_size]))
+    small_people_frames = float(np.mean([value < LOCAL_PERSON_SIZE_FRACTION for value in per_frame_size]))
     daylight = float(np.mean([s["daylight"] >= .52 for s in stats]))
     fixed = fixed_camera_score(frames); vehicles = sum(s["vehicles"] for s in stats); people_total = sum(counts)
     pairs = float(np.mean([min(s["pairs"], 8) / 8 for s in stats])); active = float(np.mean([5 <= c <= 22 for c in counts]))
@@ -260,7 +265,8 @@ def analyse_frames(frames: list[np.ndarray], model, config: dict, device: str, f
               and people_total > vehicles and camera != "obvious_high_view")
     return {"passed": passed, "score": score, "people_min": min(counts), "people_median": float(np.median(counts)),
             "people_max": max(counts), "people_total": people_total, "people_ge60_fraction": ge60,
-            "people_ge80_fraction": sized, "person_height_p25_px": float(np.percentile(heights, 25)) if heights else 0.0,
+            "people_ge80_fraction": ge80, "size_frame_pass_fraction": size_frame_pass,
+            "small_people_frame_fraction": small_people_frames, "person_height_p25_px": float(np.percentile(heights, 25)) if heights else 0.0,
             "person_height_median_px": float(np.median(heights)) if heights else 0.0,
             "daylight_fraction": daylight, "fixed_camera_score": fixed, "social_pair_score": pairs,
             "active_density_fraction": active, "vehicles_total": vehicles, "camera_assessment": camera,
@@ -273,7 +279,7 @@ def coarse_candidates(proxy: Path, duration: float, model, config: dict, device:
     for start, length in overlapping_windows(duration):
         frames = frames_at(proxy, start, length, 8)
         if not frames: continue
-        # Scale the local 80 px at 720p rule for the low-resolution proxy.
+        # Scale the established 60 px at 720p rule for the low-resolution proxy.
         threshold = max(16, LOCAL_MIN_PERSON_HEIGHT_PX * frames[0].shape[0] / 720)
         proxy_config = {**config, "min_person_height_px": threshold}
         metrics = analyse_frames(frames, model, proxy_config, device, full=False, person_threshold=threshold)
