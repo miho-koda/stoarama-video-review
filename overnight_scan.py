@@ -226,12 +226,12 @@ def main() -> None:
         examined += 1
         print(f"[{examined}] {row['capture_type']} {row.get('country') or 'Unknown'} | {row['name']}", flush=True)
         status, reason, result, local_path = "rejected", "no passing interval", None, None
-        link_status, resolved_url, link_reason = validate_source_link(row)
+        source_link_status, resolved_url, link_reason = validate_source_link(row)
         link_failure_class = recommended_action = ""
         retry_count = int(float(latest_ledger.get(row["source_key"], {}).get("retry_count") or 0)) + 1
         warning = known_unsuitable(row)
         try:
-            if link_status == "malformed":
+            if source_link_status == "malformed":
                 status, reason = "invalid_source", link_reason
                 link_failure_class, recommended_action = "malformed", "do_not_retry_until_url_is_fixed"
             elif warning:
@@ -263,19 +263,19 @@ def main() -> None:
                 if selected:
                     result, local_path = selected
             if result:
-                drive_url = upload_status = link_status = ""
+                drive_url = upload_status = drive_link_status = ""
                 if local_path:
                     try:
-                        drive_url, upload_status, link_status = upload(local_path, args.drive_remote)
+                        drive_url, upload_status, drive_link_status = upload(local_path, args.drive_remote)
                     except Exception as error:
                         upload_status = f"ERROR: {error}"
                 status = "accepted"
-                link_status = "reachable"
+                source_link_status = "reachable"
                 accepted.append({
                     **{field: row.get(field, "") for field in ACCEPTED_FIELDS}, **result,
                     "row_id": len(accepted) + 1, "local_path": str(local_path or ""),
                     "drive_url": drive_url, "upload_status": upload_status,
-                    "link_status": link_status, "status": "selected",
+                    "link_status": drive_link_status, "status": "selected",
                 })
                 reason = reason if not local_path else ""
                 print(f"  PASS score={float(result['score']):.3f} path={local_path or 'needs_mac'}", flush=True)
@@ -283,15 +283,15 @@ def main() -> None:
             reason = str(error)
             link_failure_class, recommended_action = classify_link_failure(reason)
             status = "invalid_source" if link_failure_class in {"permanently_unavailable", "restricted"} else "error"
-            link_status = link_failure_class
+            source_link_status = link_failure_class
             print(f"  ERROR {error}", flush=True)
         checked_at = datetime.now(timezone.utc).isoformat()
         ledger.append({
             "source_key": row["source_key"], "stream_id": row["stream_id"], "name": row["name"],
             "capture_type": row["capture_type"], "country": row.get("country") or "",
-            "status": status, "reason": reason, "source_link_status": link_status,
+            "status": status, "reason": reason, "source_link_status": source_link_status,
             "source_http_status": "", "resolved_source_url": resolved_url,
-            "review_link_status": link_status if status == "accepted" else "not_applicable",
+            "review_link_status": drive_link_status if status == "accepted" else "not_applicable",
             "link_failure_class": link_failure_class, "recommended_action": recommended_action,
             "retry_count": retry_count, "last_checked_utc": checked_at,
             "scanner_revision": SCANNER_REVISION,

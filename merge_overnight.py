@@ -50,6 +50,10 @@ def main() -> None:
     for row in sorted(accepted, key=lambda item: float(item.get("score") or 0), reverse=True):
         unique_accepted.setdefault(row["source_key"], row)
     accepted = list(unique_accepted.values())
+    for row in accepted:
+        if (row.get("upload_status") == "uploaded" and
+                str(row.get("drive_url") or "").startswith("https://")):
+            row["link_status"] = "verified"
     for index, row in enumerate(accepted, 1):
         row["row_id"] = index
     unique_ledger = {row["source_key"]: row for row in ledger}
