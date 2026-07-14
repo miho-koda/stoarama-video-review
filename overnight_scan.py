@@ -25,6 +25,7 @@ ACCEPTED_FIELDS = [
     "row_id", "source_key", "stream_id", "name", "capture_type", "video_id",
     "youtube_url", "source_page_url", "source_url", "stoarama_url", "city", "region",
     "country", "location_text", "segment_start_utc", "segment_end_utc", "duration_seconds",
+    "segment_start_offset_seconds", "segment_end_offset_seconds",
     "score", "people_min", "people_median", "people_max", "people_ge60_fraction",
     "daylight_fraction", "fixed_camera_score", "social_pair_score", "active_density_fraction",
     "vehicles_total", "provenance", "stoarama_clip_id", "local_path", "drive_url",
