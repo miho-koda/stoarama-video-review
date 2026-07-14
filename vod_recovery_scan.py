@@ -24,6 +24,12 @@ COOKIE_FILE = ""
 
 
 def vod_ffmpeg_executable() -> str:
+    configured = os.environ.get("STOARAMA_VOD_FFMPEG", "")
+    if configured:
+        return configured
+    conda_ffmpeg = Path.home() / ".stoarama-ffmpeg" / "bin" / "ffmpeg"
+    if conda_ffmpeg.is_file():
+        return str(conda_ffmpeg)
     import imageio_ffmpeg
     return imageio_ffmpeg.get_ffmpeg_exe()
 
