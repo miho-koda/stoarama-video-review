@@ -66,13 +66,13 @@ def headers(fmt: dict) -> list[str]:
 
 def fetch_frame(fmt: dict, offset: float, output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
-    run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", str(offset),
+    run(["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-ss", str(offset),
          *headers(fmt), "-i", fmt["url"], "-frames:v", "1", "-q:v", "3", str(output)])
 
 
 def fetch_clip(fmt: dict, offset: float, duration: int, output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
-    run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", str(offset),
+    run(["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-ss", str(offset),
          *headers(fmt), "-i", fmt["url"], "-t", str(duration), "-an", "-c:v", "libx264",
          "-preset", "veryfast", "-crf", "25", "-movflags", "+faststart", str(output)])
 
