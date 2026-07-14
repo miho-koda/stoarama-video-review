@@ -32,7 +32,7 @@ GIB = 1024 ** 3
 PROXY_CAP = 2 * GIB
 WORK_CAP = 3 * GIB
 PILOT_IDS = ("ElW4dUFEpuE", "3W0yKMCLiIs", "UwdghOblns0")
-REVISION = "local-vod-scan-v3"
+REVISION = "local-vod-scan-v4"
 ROOT = Path(__file__).resolve().parent
 DEFAULT_MANIFEST = ROOT / "manifests" / "vod_fixed_camera_priority.csv"
 
@@ -43,6 +43,9 @@ LOCAL_MIN_PERSON_HEIGHT_PX = 60
 LOCAL_PERSON_SIZE_FRACTION = .70
 LOCAL_FIXED_CAMERA_MIN = .80
 LOCAL_DENSE_STABILITY_MIN = .85
+MAX_DENSE_TRANSLATION_PX = 1.25
+MAX_DENSE_ROTATION_DEGREES = .20
+MAX_DENSE_ZOOM_CHANGE_PERCENT = .40
 MIN_CLIP_GAP_SECONDS = 300
 
 REVIEW_FIELDS = [
@@ -52,7 +55,8 @@ REVIEW_FIELDS = [
     "recording_time_source", "recording_time_confidence", "duration_seconds", "score", "people_min",
     "people_median", "people_max", "people_ge60_fraction", "people_ge80_fraction", "size_frame_pass_fraction",
     "small_people_frame_fraction", "person_height_p25_px", "person_height_median_px", "daylight_fraction", "fixed_camera_score", "dense_stability_score",
-    "camera_motion_median_px", "camera_motion_max_px",
+    "camera_motion_median_px", "camera_motion_max_px", "camera_rotation_median_degrees",
+    "camera_rotation_max_degrees", "camera_zoom_median_percent", "camera_zoom_max_percent",
     "social_pair_score", "active_density_fraction", "vehicles_total", "camera_assessment",
     "camera_height_confidence", "ptz_assessment", "public_access_warning", "run_revision",
 ]
@@ -194,6 +198,20 @@ def frames_at(path: Path, start: float, duration: float, samples: int) -> list[n
     return frames
 
 
+def affine_motion(transform: np.ndarray) -> dict:
+    """Convert an affine transform into translation, rotation, and zoom."""
+    a, b = float(transform[0, 0]), float(transform[1, 0])
+    return {"translation_px": math.hypot(float(transform[0, 2]), float(transform[1, 2])),
+            "rotation_degrees": math.degrees(math.atan2(b, a)),
+            "zoom_change_percent": abs(math.hypot(a, b) - 1.0) * 100}
+
+
+def stable_camera_pair(motion: dict) -> bool:
+    return (motion["translation_px"] <= MAX_DENSE_TRANSLATION_PX
+            and abs(motion["rotation_degrees"]) <= MAX_DENSE_ROTATION_DEGREES
+            and motion["zoom_change_percent"] <= MAX_DENSE_ZOOM_CHANGE_PERCENT)
+
+
 def camera_stability_metrics(path: Path, start: float, duration: float) -> dict:
     """Measure viewpoint motion in short, dense bursts across a candidate.
 
@@ -222,15 +240,20 @@ def camera_stability_metrics(path: Path, start: float, duration: float) -> dict:
             transform, inliers = cv2.estimateAffinePartial2D(points[valid], tracked[valid], method=cv2.RANSAC,
                                                                ransacReprojThreshold=1.5)
             if transform is None or inliers is None or int(inliers.sum()) < 20: continue
-            dx, dy = float(transform[0, 2]), float(transform[1, 2])
-            motions.append(math.hypot(dx, dy))
+            motions.append(affine_motion(transform))
     capture.release()
     if len(motions) < 6:
-        return {"dense_stability_score": 0.0, "camera_motion_median_px": float("inf"), "camera_motion_max_px": float("inf")}
-    median = float(np.median(motions)); maximum = float(np.max(motions))
-    # At 480 px wide, <= 1.25 px per 0.5 s is a conservative fixed-view gate.
-    stable = float(np.mean(np.asarray(motions) <= 1.25))
-    return {"dense_stability_score": stable, "camera_motion_median_px": median, "camera_motion_max_px": maximum}
+        return {"dense_stability_score": 0.0, "camera_motion_median_px": float("inf"), "camera_motion_max_px": float("inf"),
+                "camera_rotation_median_degrees": float("inf"), "camera_rotation_max_degrees": float("inf"),
+                "camera_zoom_median_percent": float("inf"), "camera_zoom_max_percent": float("inf")}
+    translations = [item["translation_px"] for item in motions]
+    rotations = [abs(item["rotation_degrees"]) for item in motions]
+    zooms = [item["zoom_change_percent"] for item in motions]
+    stable = float(np.mean([stable_camera_pair(item) for item in motions]))
+    return {"dense_stability_score": stable, "camera_motion_median_px": float(np.median(translations)),
+            "camera_motion_max_px": float(np.max(translations)),
+            "camera_rotation_median_degrees": float(np.median(rotations)), "camera_rotation_max_degrees": float(np.max(rotations)),
+            "camera_zoom_median_percent": float(np.median(zooms)), "camera_zoom_max_percent": float(np.max(zooms))}
 
 
 def perspective_assessment(stats: list[dict]) -> tuple[str, str]:
@@ -258,7 +281,9 @@ def analyse_frames(frames: list[np.ndarray], model, config: dict, device: str, f
     fixed = fixed_camera_score(frames); vehicles = sum(s["vehicles"] for s in stats); people_total = sum(counts)
     pairs = float(np.mean([min(s["pairs"], 8) / 8 for s in stats])); active = float(np.mean([5 <= c <= 22 for c in counts]))
     camera, confidence = perspective_assessment(stats)
-    stability = stability or {"dense_stability_score": 1.0, "camera_motion_median_px": 0.0, "camera_motion_max_px": 0.0}
+    stability = stability or {"dense_stability_score": 1.0, "camera_motion_median_px": 0.0, "camera_motion_max_px": 0.0,
+                              "camera_rotation_median_degrees": 0.0, "camera_rotation_max_degrees": 0.0,
+                              "camera_zoom_median_percent": 0.0, "camera_zoom_max_percent": 0.0}
     score = 2 * active + pairs + daylight + sized + fixed - abs(float(np.median(counts)) - 12) / 20 - max(0, max(counts) - 25) / 10
     passed = (usable >= .8 and sized >= LOCAL_PERSON_SIZE_FRACTION and daylight >= .75
               and fixed >= LOCAL_FIXED_CAMERA_MIN and stability["dense_stability_score"] >= LOCAL_DENSE_STABILITY_MIN

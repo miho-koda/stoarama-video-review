@@ -53,7 +53,8 @@ and free disk.
 
 The scanner uses `yolo26n.pt` and the established thresholds: daylight,
 2–30 people, at least 70% of people 60 px or taller at 720p, people over
-vehicles, fixed-camera score, and dense short-burst background-motion checks.
+vehicles, fixed-camera score, and dense short-burst background-motion checks
+for pan/tilt, rotation, and zoom.
 It records global and per-frame person-size distributions (including median
 and lower-quartile height) so borderline views are visible in review without
 imposing a universal close-view threshold. It requires a five-minute gap between

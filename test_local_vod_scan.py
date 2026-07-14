@@ -73,6 +73,17 @@ def test_dense_camera_motion_rejects_an_otherwise_good_clip():
     assert scan.classify_rejection(metrics) == "ptz_or_moving_camera"
 
 
+def test_dense_stability_rejects_pan_rotation_and_zoom():
+    identity = __import__("numpy").array([[1., 0., 0.], [0., 1., 0.]])
+    pan = __import__("numpy").array([[1., 0., 2.], [0., 1., 0.]])
+    rotation = __import__("numpy").array([[.9999, -.01, 0.], [.01, .9999, 0.]])
+    zoom = __import__("numpy").array([[1.01, 0., 0.], [0., 1.01, 0.]])
+    assert scan.stable_camera_pair(scan.affine_motion(identity))
+    assert not scan.stable_camera_pair(scan.affine_motion(pan))
+    assert not scan.stable_camera_pair(scan.affine_motion(rotation))
+    assert not scan.stable_camera_pair(scan.affine_motion(zoom))
+
+
 def test_person_size_metrics_keep_60px_acceptance_and_report_distribution(monkeypatch):
     frame = __import__("numpy").zeros((100, 100, 3), dtype="uint8")
     stats = [{"people": 5, "vehicles": 0, "pairs": 1, "daylight": 1, "all_heights": [70, 85, 90, 95, 100]}] * 12
