@@ -80,6 +80,29 @@ def blank_fields(row: dict, fields: list[str]) -> None:
         row.setdefault(field, "")
 
 
+def read_location_reviews(path: Path) -> dict[str, dict]:
+    """Read reviewer-approved location corrections keyed by YouTube video ID."""
+    rows, _ = read_csv(path)
+    reviews = {}
+    for row in rows:
+        video_id = (row.get("video_id") or "").strip()
+        if not video_id:
+            raise ValueError(f"Location review without video_id in {path}")
+        if video_id in reviews:
+            raise ValueError(f"Duplicate location review for {video_id}")
+        reviews[video_id] = row
+    return reviews
+
+
+def apply_location_review(row: dict, review: dict | None) -> None:
+    """Apply a curated review without changing Stoarama's original location fields."""
+    if not review:
+        return
+    for field in LOCATION_FIELDS:
+        if field in review and review[field] != "":
+            row[field] = review[field]
+
+
 def add_stoarama(row: dict, record: dict | None, snapshot_at: str) -> None:
     blank_fields(row, STOARAMA_FIELDS + LOCATION_FIELDS)
     row["stoarama_snapshot_at_utc"] = snapshot_at
@@ -187,13 +210,17 @@ def main() -> None:
                         help="Fetch only public metadata without reading a browser profile")
     parser.add_argument("--youtube-oembed-only", action="store_true",
                         help="Use YouTube's public oEmbed response; omits description, tags, and live details")
+    parser.add_argument("--location-review", type=Path,
+                        help="Curated location-review CSV keyed by video_id; original source fields stay unchanged")
     args = parser.parse_args()
     rows, original_fields = read_csv(args.input)
     snapshot_at = datetime.now(timezone.utc).isoformat()
     records = {} if args.skip_stoarama else fetch_stoarama(args.stoarama_api)
+    location_reviews = read_location_reviews(args.location_review) if args.location_review else {}
     for row in rows:
         if not args.skip_stoarama: add_stoarama(row, records.get(str(row.get("stream_id") or "")), snapshot_at)
         else: blank_fields(row, STOARAMA_FIELDS + LOCATION_FIELDS)
+        apply_location_review(row, location_reviews.get(str(row.get("video_id") or "")))
         if not args.skip_youtube: add_youtube(row, None if args.youtube_no_cookies else args.youtube_browser,
                                               oembed_only=args.youtube_oembed_only)
         else: blank_fields(row, YOUTUBE_FIELDS)

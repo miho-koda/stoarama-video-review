@@ -1,4 +1,4 @@
-from enrich_accepted_metadata import add_stoarama, apply_oembed_metadata, browser_spec
+from enrich_accepted_metadata import add_stoarama, apply_location_review, apply_oembed_metadata, browser_spec
 
 
 def test_stoarama_enrichment_preserves_original_location_and_never_guesses():
@@ -32,3 +32,13 @@ def test_oembed_is_explicitly_marked_partial():
     assert row["youtube_current_title"] == "Camera"
     assert "youtube_description" not in row
     assert row["youtube_error"] == "yt-dlp blocked"
+
+
+def test_location_review_changes_only_review_fields():
+    row = {"city": "Wrong City", "stoarama_city_original": "Wrong City", "location_status": "unverified"}
+    apply_location_review(row, {"verified_city": "Tokyo", "verified_country": "Japan",
+                                "location_status": "verified", "location_confidence": "medium"})
+    assert row["city"] == "Wrong City"
+    assert row["stoarama_city_original"] == "Wrong City"
+    assert row["verified_city"] == "Tokyo"
+    assert row["location_status"] == "verified"
