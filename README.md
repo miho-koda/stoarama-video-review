@@ -159,6 +159,20 @@ python local_vod_scan.py pilot --model /absolute/path/to/yolo26n.pt
 python local_vod_scan.py run --model /absolute/path/to/yolo26n.pt
 ```
 
+## Server-only catalog remainder
+
+Keep the local VOD manifest and accepted sources out of the server campaign.
+Build a frozen remainder manifest, then submit separate shards with a separate
+work directory and Drive root. This does not touch `overnight_scan`.
+
+```bash
+python build_server_remainder_manifest.py \
+  --catalog work/overnight/catalog_all.csv \
+  --exclude manifests/vod_fixed_camera_priority.csv \
+  --exclude work/overnight/merged/selections_all.csv \
+  --output work/server_remainder/source_manifest.csv
+```
+
 - No Google, YouTube, or rclone credentials are stored in this repository.
 - `work/`, clips, cookies, model weights, caches, and rclone configuration are
   ignored by Git.
