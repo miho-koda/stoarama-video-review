@@ -79,36 +79,11 @@ python pipeline.py validate work/selections.csv
 Use `--max-videos 10` for a bounded test and `--no-resume` to intentionally
 start a selection file again.
 
-## Stage 3: preserve and upload on macOS
+## Retired Mac frame-exchange workflow
 
-Install the local runtime once:
-
-```bash
-brew install ffmpeg rclone deno
-python -m pip install -U yt-dlp
-```
-
-Configure an rclone Drive remote once. The Drive folder ID is configuration,
-not a credential:
-
-```bash
-rclone config create pilotdrive drive scope drive root_folder_id YOUR_FOLDER_ID
-```
-
-Download the current script and run it with the server-generated manifest:
-
-```bash
-python mac_download_pilot.py \
-  --manifest work/selections.csv \
-  --browser chrome \
-  --upload \
-  --drive-remote pilotdrive:
-```
-
-The preservation stage processes oldest selections first, resumes existing
-MP4s, enables yt-dlp's Deno/EJS challenge solver, validates encoded duration,
-uploads each clip, creates a Drive link, and writes `pilot_manifest.csv` with
-UTC/local timestamps and source metadata.
+The earlier Mac-to-Drive-to-GPU frame-exchange workflow has been retired. It
+created transferable frame packs and is intentionally not included here. For
+archived YouTube VODs, use the local-only workflow below instead.
 
 ## Overnight all-source scan
 
