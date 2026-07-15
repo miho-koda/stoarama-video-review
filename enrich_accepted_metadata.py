@@ -118,16 +118,44 @@ def browser_spec(value: str) -> tuple[str, ...]:
     return (browser, profile) if profile else (browser,)
 
 
-def add_youtube(row: dict, browser: str) -> None:
+def apply_oembed_metadata(row: dict, payload: dict, previous_error: str = "") -> None:
+    """Populate the public metadata that YouTube's oEmbed endpoint exposes."""
+    author = payload.get("author_name") or ""
+    author_url = payload.get("author_url") or ""
+    row.update({"youtube_metadata_status": "partial_oembed", "youtube_current_title": payload.get("title") or "",
+                "youtube_channel": author, "youtube_channel_url": author_url, "youtube_uploader": author,
+                "youtube_webpage_url_current": row.get("youtube_url") or "", "youtube_thumbnail": payload.get("thumbnail_url") or "",
+                "youtube_error": previous_error[:1000]})
+
+
+def add_youtube_oembed(row: dict, previous_error: str = "") -> bool:
+    try:
+        query = urllib.parse.urlencode({"url": row["youtube_url"], "format": "json"})
+        request = urllib.request.Request(f"https://www.youtube.com/oembed?{query}", headers={"User-Agent": "social-mixing-metadata-audit/1.0"})
+        with urllib.request.urlopen(request, timeout=30) as response:
+            apply_oembed_metadata(row, json.load(response), previous_error)
+        return True
+    except Exception as error:
+        row["youtube_error"] = (previous_error + " | oEmbed: " + str(error))[:1000]
+        return False
+
+
+def add_youtube(row: dict, browser: str | None, oembed_only: bool = False) -> None:
     blank_fields(row, YOUTUBE_FIELDS)
     row["youtube_metadata_checked_at_utc"] = datetime.now(timezone.utc).isoformat()
     if not row.get("youtube_url"):
         row["youtube_metadata_status"] = "not_youtube"
         return
+    if oembed_only:
+        if not add_youtube_oembed(row):
+            row["youtube_metadata_status"] = "error"
+        return
     try:
         import yt_dlp
-        options = {"quiet": True, "skip_download": True, "noplaylist": True, "cookiesfrombrowser": browser_spec(browser),
+        options = {"quiet": True, "skip_download": True, "noplaylist": True,
                    "js_runtimes": {"deno": {}}, "remote_components": {"ejs:github"}}
+        if browser:
+            options["cookiesfrombrowser"] = browser_spec(browser)
         with yt_dlp.YoutubeDL(options) as ydl:
             info = ydl.extract_info(row["youtube_url"], download=False)
         row.update({
@@ -143,7 +171,8 @@ def add_youtube(row: dict, browser: str) -> None:
             "youtube_view_count": info.get("view_count") or "", "youtube_like_count": info.get("like_count") or "", "youtube_error": "",
         })
     except Exception as error:
-        row["youtube_metadata_status"] = "error"; row["youtube_error"] = str(error)[:1000]
+        if not add_youtube_oembed(row, str(error)):
+            row["youtube_metadata_status"] = "error"
 
 
 def main() -> None:
@@ -154,6 +183,10 @@ def main() -> None:
     parser.add_argument("--skip-stoarama", action="store_true")
     parser.add_argument("--skip-youtube", action="store_true")
     parser.add_argument("--youtube-browser", default="chrome:Profile 1")
+    parser.add_argument("--youtube-no-cookies", action="store_true",
+                        help="Fetch only public metadata without reading a browser profile")
+    parser.add_argument("--youtube-oembed-only", action="store_true",
+                        help="Use YouTube's public oEmbed response; omits description, tags, and live details")
     args = parser.parse_args()
     rows, original_fields = read_csv(args.input)
     snapshot_at = datetime.now(timezone.utc).isoformat()
@@ -161,7 +194,8 @@ def main() -> None:
     for row in rows:
         if not args.skip_stoarama: add_stoarama(row, records.get(str(row.get("stream_id") or "")), snapshot_at)
         else: blank_fields(row, STOARAMA_FIELDS + LOCATION_FIELDS)
-        if not args.skip_youtube: add_youtube(row, args.youtube_browser)
+        if not args.skip_youtube: add_youtube(row, None if args.youtube_no_cookies else args.youtube_browser,
+                                              oembed_only=args.youtube_oembed_only)
         else: blank_fields(row, YOUTUBE_FIELDS)
     fields = original_fields + [field for field in STOARAMA_FIELDS + LOCATION_FIELDS + YOUTUBE_FIELDS if field not in original_fields]
     args.output.parent.mkdir(parents=True, exist_ok=True)

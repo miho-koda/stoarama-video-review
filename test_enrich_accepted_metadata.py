@@ -1,4 +1,4 @@
-from enrich_accepted_metadata import add_stoarama
+from enrich_accepted_metadata import add_stoarama, apply_oembed_metadata, browser_spec
 
 
 def test_stoarama_enrichment_preserves_original_location_and_never_guesses():
@@ -18,3 +18,17 @@ def test_stoarama_enrichment_preserves_original_location_and_never_guesses():
     assert row["location_status"] == "unverified"
     assert row["stoarama_provider"] == "youtube"
     assert row["stoarama_tags"] == '["a"]'
+
+
+def test_browser_spec_keeps_optional_profile_handling_outside_yt_dlp_options():
+    assert browser_spec("chrome:Profile 1") == ("chrome", "Profile 1")
+
+
+def test_oembed_is_explicitly_marked_partial():
+    row = {"youtube_url": "https://www.youtube.com/watch?v=abc"}
+    apply_oembed_metadata(row, {"title": "Camera", "author_name": "Operator", "author_url": "https://youtube.test/@operator",
+                                "thumbnail_url": "https://image.test/thumb.jpg"}, "yt-dlp blocked")
+    assert row["youtube_metadata_status"] == "partial_oembed"
+    assert row["youtube_current_title"] == "Camera"
+    assert "youtube_description" not in row
+    assert row["youtube_error"] == "yt-dlp blocked"
