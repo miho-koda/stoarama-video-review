@@ -1,5 +1,0 @@
-numpy>=1.26,<3
-opencv-python>=4.9
-torch>=2.2
-ultralytics>=8.3
-yt-dlp[default]>=2025.6.30

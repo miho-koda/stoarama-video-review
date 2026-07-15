@@ -119,38 +119,6 @@ at most 80 verified Drive clips and caps each country at five rows.
 
 ## Reproducibility and safety
 
-## Local-only VOD recovery on macOS
-
-The active archived-YouTube workflow runs entirely on the Mac: no frame packs
-or browser credentials leave it, and no JPG frames are created. Read
-[`LOCAL_VOD_HANDOFF.md`](LOCAL_VOD_HANDOFF.md), run `doctor`, and then run the
-fixed three-source pilot. Do not start the 59-source run until its at-most-six
-clips have been reviewed and approved.
-
-```bash
-python local_vod_scan.py doctor --model /absolute/path/to/yolo26n.pt
-python local_vod_scan.py pilot --model /absolute/path/to/yolo26n.pt
-# only after pilot approval:
-python local_vod_scan.py run --model /absolute/path/to/yolo26n.pt
-```
-
-## Server-only catalog remainder
-
-Keep the local VOD manifest and accepted sources out of the server campaign.
-Build a frozen remainder manifest, then submit separate shards with a separate
-work directory and Drive root. This does not touch `overnight_scan`.
-
-```bash
-python build_server_remainder_manifest.py \
-  --catalog work/overnight/catalog_all.csv \
-  --exclude manifests/vod_fixed_camera_priority.csv \
-  --exclude work/overnight/merged/selections_all.csv \
-  --output work/server_remainder/source_manifest.csv
-```
-
-Submit `server_remainder_scan.sbatch` as an array with `STOARAMA_WORK_ROOT`
-and `STOARAMA_DRIVE_ROOT`; every shard receives a distinct subdirectory.
-
 - No Google, YouTube, or rclone credentials are stored in this repository.
 - `work/`, clips, cookies, model weights, caches, and rclone configuration are
   ignored by Git.
