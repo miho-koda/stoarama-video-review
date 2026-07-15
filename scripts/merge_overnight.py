@@ -7,6 +7,8 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
+from _paths import PROJECT_ROOT
+
 from overnight_scan import ACCEPTED_FIELDS, LEDGER_FIELDS, finalize, retryable_server_error
 from stoarama_pipeline.common import load_config, read_csv, write_csv
 from stoarama_pipeline.discover import CATALOG_FIELDS
@@ -32,7 +34,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Merge independent overnight scanner shards")
     parser.add_argument("shards", nargs="+", type=Path)
     parser.add_argument("--output", type=Path, default=Path("work/overnight/merged"))
-    parser.add_argument("--config", default="pipeline_config.json")
+    parser.add_argument("--config", default=str(PROJECT_ROOT / "config" / "pipeline_config.json"))
     parser.add_argument("--drive-remote", default="pilotdrive:overnight_scan")
     args = parser.parse_args()
     accepted, ledger, catalogs = [], [], []

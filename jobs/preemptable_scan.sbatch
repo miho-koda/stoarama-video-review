@@ -25,7 +25,7 @@ manifest_args=()
 # The scanner atomically rewrites its ledger after every source. If Slurm
 # preempts and requeues this job, the new process skips every ledgered source;
 # at most the source active at the instant of preemption is repeated.
-"${STOARAMA_PYTHON:?Set STOARAMA_PYTHON}" overnight_scan.py \
+"${STOARAMA_PYTHON:?Set STOARAMA_PYTHON}" scripts/overnight_scan.py \
   --model "${STOARAMA_MODEL:?Set STOARAMA_MODEL}" \
   --work "${STOARAMA_WORK:?Set STOARAMA_WORK}" \
   --hours 23.75 \

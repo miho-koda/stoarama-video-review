@@ -14,6 +14,8 @@ from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from _paths import PROJECT_ROOT
+
 from stoarama_pipeline.common import duration_for_score, load_config, read_csv, write_csv
 from stoarama_pipeline.discover import CATALOG_FIELDS, discover
 from stoarama_pipeline.link_audit import classify_link_failure, validate_source_link
@@ -146,7 +148,7 @@ def finalize(accepted: list[dict], work: Path, config: dict, remote: str) -> Non
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description="Resumable all-source overnight Stoarama scanner")
-    result.add_argument("--config", default="pipeline_config.json")
+    result.add_argument("--config", default=str(PROJECT_ROOT / "config" / "pipeline_config.json"))
     result.add_argument("--work", type=Path, default=Path("work/overnight"))
     result.add_argument("--model", required=True)
     result.add_argument("--device", default="0")

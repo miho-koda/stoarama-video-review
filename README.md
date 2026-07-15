@@ -1,136 +1,31 @@
-# Stoarama social-mixing video pipeline
+# Stoarama video review archive
 
-This repository turns Stoarama's YouTube, HLS, and HTTP-video catalog into
-reviewable, timestamped social-mixing clips and metadata. YouTube preservation
-can still require a Mac when cloud IPs are blocked.
+This repository preserves the server workflow that produced 40 accepted camera clips and the curation tools used to enrich their metadata. It stores no clips, credentials, cookies, or model weights.
 
-Use Python 3.11 or newer for both stages.
+The canonical review file is [selections_all.final_enriched.csv](https://drive.google.com/open?id=1uUcmEErzjizq30k__nwA6x77Jn0ZGJ6q).
 
-The pipeline never downloads an entire livestream. It samples historical DVR
-fragments during selection and preserves only accepted 90, 120, or 150-second
-intervals.
+## Repository map
 
-## Acceptance criteria
+- `src/stoarama_pipeline/`: reusable catalog, link, media, selection, and validation helpers.
+- `scripts/`: discovery, scanning, merging, and metadata-enrichment commands.
+- `jobs/`: Slurm launch files for the original GPU-server workflow.
+- `config/`: quality thresholds and duration policy.
+- `data/curation/`: reviewed locations for the 40 accepted clips.
+- `tests/`: regression tests.
 
-- Fixed camera; moving/PTZ views are rejected.
-- Broad local daytime plus image-based daylight checks.
-- Normally 2–30 qualifying people per sampled frame.
-- At least 70% of detected people are 60 pixels or taller.
-- People dominate vehicles.
-- Moderate, annotatable density is preferred over sparse or packed crowds.
-- Nearby-person and active-density signals improve the social-mixing rank.
-- Weak videos are rejected rather than used to pad the target.
+## Scope
 
-Thresholds and the 90/120/150-second score policy live in
-[`pipeline_config.json`](pipeline_config.json).
+The server workflow is retained for auditability and possible reproduction; it is not an instruction to start another campaign. Later local VOD, frame-exchange, and remainder-scan experiments were removed.
 
-## Stage 1: discover on the server
+## Commands
 
-The discovery command reads Stoarama's current API, extracts YouTube IDs,
-deduplicates them, and checkpoints a normalized catalog.
+Use Python 3.11+ and install `requirements-server.txt` in a suitable server environment. Run from the repository root:
 
 ```bash
-python pipeline.py discover --output work/catalog.csv
+python scripts/pipeline.py discover --output work/catalog.csv
+python scripts/pipeline.py validate path/to/selections.csv
+python scripts/enrich_accepted_metadata.py --help
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests
 ```
 
-Stoarama does not currently expose an IANA timezone for every record. The
-catalog includes editable `timezone` and `utc_offset_hours` columns. Populate
-`utc_offset_hours` for multi-time-zone countries when known; otherwise the
-selector uses image daylight only and does not guess a local clock. Stable
-single-zone country fallbacks may be added to `pipeline_config.json`.
-
-For a quick smoke test:
-
-```bash
-python pipeline.py discover --max-records 20 --output work/catalog.csv
-```
-
-For a normal run, discovery and resumable GPU selection can be launched as one
-command:
-
-```bash
-python pipeline.py run \
-  --model /absolute/path/to/yolo26n.pt \
-  --target 80 \
-  --device 0
-```
-
-Add `--refresh-catalog` when you intentionally want to replace the cached
-Stoarama catalog. The separate commands below remain available for debugging.
-
-## Stage 2: select on the GPU server
-
-Install `requirements-server.txt`, then provide the project YOLO checkpoint.
-The command resumes from `work/selections.csv` and `work/rejected.csv` after an
-interruption.
-
-```bash
-python pipeline.py select \
-  --catalog work/catalog.csv \
-  --model /absolute/path/to/yolo26n.pt \
-  --target 80 \
-  --device 0 \
-  --output work/selections.csv \
-  --rejected work/rejected.csv
-
-python pipeline.py validate work/selections.csv
-```
-
-Use `--max-videos 10` for a bounded test and `--no-resume` to intentionally
-start a selection file again.
-
-## Retired Mac frame-exchange workflow
-
-The earlier Mac-to-Drive-to-GPU frame-exchange workflow has been retired. It
-created transferable frame packs and is intentionally not included here. For
-archived YouTube VODs, use the local-only workflow below instead.
-
-## Overnight all-source scan
-
-`overnight_scan.py` inventories all motion-video source types, interleaves
-countries, searches existing Stoarama recordings before trying a live capture,
-and checkpoints after every source. Accepted MP4s are cached under
-`work/overnight/clips/` and uploaded to the configured Drive remote. YouTube
-selections that cannot be preserved on the server are written to
-`needs_mac_download.csv`.
-
-Submit two independent six-hour shards concurrently, then merge their outputs:
-
-```bash
-mkdir -p work/overnight/logs
-export STOARAMA_REPO="$PWD"
-export STOARAMA_PYTHON="$HOME/.stoarama-server-env/bin/python"
-export STOARAMA_MODEL="/absolute/path/to/yolo26n.pt"
-export STOARAMA_SHARD_COUNT=2
-export STOARAMA_WORK=work/overnight/shard_0
-export STOARAMA_DRIVE_REMOTE=pilotdrive:overnight_scan/shard_0
-export STOARAMA_SHARD_INDEX=0
-first=$(sbatch --parsable overnight_scan.sbatch)
-export STOARAMA_WORK=work/overnight/shard_1
-export STOARAMA_DRIVE_REMOTE=pilotdrive:overnight_scan/shard_1
-export STOARAMA_SHARD_INDEX=1
-second=$(sbatch --parsable overnight_scan.sbatch)
-sbatch --dependency="afterany:$first:$second" merge_overnight.sbatch
-```
-
-Morning outputs are `review_balanced.csv`, `selections_all.csv`,
-`scan_ledger.csv`, and `needs_mac_download.csv`. The balanced review contains
-at most 80 verified Drive clips and caps each country at five rows.
-
-## Reproducibility and safety
-
-- No Google, YouTube, or rclone credentials are stored in this repository.
-- `work/`, clips, cookies, model weights, caches, and rclone configuration are
-  ignored by Git.
-- Selection output is written atomically after every examined video.
-- Recording timestamps come from YouTube DVR fragment timing and should be
-  treated as approximately ±5 seconds.
-- Existing versioned review pages and pilot CSVs remain only for compatibility;
-  see [`legacy/README.md`](legacy/README.md).
-
-## Tests
-
-```bash
-python -m unittest -v test_pipeline.py
-python -m pytest -q test_scan.py
-```
+See [Dataset overview](docs/DATASET_40_CLIPS.md), [original workflow](docs/ORIGINAL_SERVER_WORKFLOW.md), [data dictionary](docs/DATA_DICTIONARY.md), [location verification](docs/LOCATION_VERIFICATION.md), and [Drive deliverables](docs/DRIVE_DELIVERABLES.md).

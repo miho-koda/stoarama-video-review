@@ -10,7 +10,7 @@
 set -euo pipefail
 cd "${STOARAMA_REPO:?Set STOARAMA_REPO}"
 read -r -a shards <<< "${STOARAMA_SHARDS:-work/overnight/shard_0 work/overnight/shard_1}"
-"${STOARAMA_PYTHON:?Set STOARAMA_PYTHON}" merge_overnight.py \
+"${STOARAMA_PYTHON:?Set STOARAMA_PYTHON}" scripts/merge_overnight.py \
   "${shards[@]}" \
   --output work/overnight/merged \
   --drive-remote pilotdrive:overnight_scan

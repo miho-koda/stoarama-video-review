@@ -5,6 +5,8 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from _paths import PROJECT_ROOT
+
 import cv2
 import numpy as np
 import yt_dlp
@@ -12,7 +14,7 @@ from ultralytics import YOLO
 
 from scan import daylight_score, fixed_camera_score
 
-MODEL = Path(__file__).resolve().parent.parent / "models/yolo26n.pt"
+MODEL = PROJECT_ROOT / "models/yolo26n.pt"
 CRITERIA = {
     "min_person_height_px": 60,
     "qualifying_people_min": 2,

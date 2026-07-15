@@ -20,7 +20,7 @@ for ledger in "${prior_ledgers[@]}"; do
 done
 manifest_args=()
 [[ -n "${STOARAMA_SOURCE_MANIFEST:-}" ]] && manifest_args=(--source-manifest "$STOARAMA_SOURCE_MANIFEST")
-"${STOARAMA_PYTHON:?Set STOARAMA_PYTHON}" overnight_scan.py \
+"${STOARAMA_PYTHON:?Set STOARAMA_PYTHON}" scripts/overnight_scan.py \
   --model "${STOARAMA_MODEL:?Set STOARAMA_MODEL}" \
   --work "${STOARAMA_WORK:-work/overnight}" \
   --hours 5.75 \

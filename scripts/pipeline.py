@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from _paths import PROJECT_ROOT
+
 from stoarama_pipeline.common import load_config, write_csv
 from stoarama_pipeline.discover import CATALOG_FIELDS, discover
 from stoarama_pipeline.validate import validate_selection
@@ -11,7 +13,7 @@ from stoarama_pipeline.validate import validate_selection
 
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description="Repeatable Stoarama social-mixing dataset pipeline")
-    root.add_argument("--config", default="pipeline_config.json")
+    root.add_argument("--config", default=str(PROJECT_ROOT / "config" / "pipeline_config.json"))
     commands = root.add_subparsers(dest="command", required=True)
     find = commands.add_parser("discover", help="Fetch and normalize the current Stoarama YouTube catalog")
     find.add_argument("--output", default="work/catalog.csv"); find.add_argument("--max-records", type=int, default=0)
