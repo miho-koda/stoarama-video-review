@@ -173,6 +173,9 @@ python build_server_remainder_manifest.py \
   --output work/server_remainder/source_manifest.csv
 ```
 
+Submit `server_remainder_scan.sbatch` as an array with `STOARAMA_WORK_ROOT`
+and `STOARAMA_DRIVE_ROOT`; every shard receives a distinct subdirectory.
+
 - No Google, YouTube, or rclone credentials are stored in this repository.
 - `work/`, clips, cookies, model weights, caches, and rclone configuration are
   ignored by Git.

@@ -15,12 +15,17 @@ mkdir -p work/server_remainder/logs
 module load community-modules
 module load ffmpeg/5.1.4
 
+shard="${SLURM_ARRAY_TASK_ID:?Submit as an array}"
+work="${STOARAMA_WORK_ROOT:?Set STOARAMA_WORK_ROOT}/shard_${shard}"
+remote="${STOARAMA_DRIVE_ROOT:?Set STOARAMA_DRIVE_ROOT}/shard_${shard}"
+mkdir -p "${work}/logs"
+
 "${STOARAMA_PYTHON:?Set STOARAMA_PYTHON}" overnight_scan.py \
   --model "${STOARAMA_MODEL:?Set STOARAMA_MODEL}" \
-  --work "${STOARAMA_WORK:?Set STOARAMA_WORK}" \
+  --work "${work}" \
   --hours 23.5 \
   --device 0 \
-  --drive-remote "${STOARAMA_DRIVE_REMOTE:?Set STOARAMA_DRIVE_REMOTE}" \
+  --drive-remote "${remote}" \
   --shard-count "${STOARAMA_SHARD_COUNT:?Set STOARAMA_SHARD_COUNT}" \
-  --shard-index "${SLURM_ARRAY_TASK_ID:?Submit as an array}" \
+  --shard-index "${shard}" \
   --source-manifest "${STOARAMA_SOURCE_MANIFEST:?Set STOARAMA_SOURCE_MANIFEST}"
