@@ -113,10 +113,11 @@ def detect(model, frame):
             "vehicles": vehicles, "pairs": pairs, "daylight": daylight_score(frame)}
 
 
-def full_window(dvr, model, start, cache):
+def full_window(dvr, model, start, cache, duration_seconds=150):
     frames, stats = [], []
-    for n in range(15):
-        frame = dvr.frame(start + timedelta(seconds=n*10), cache)
+    samples = max(12, round(duration_seconds / 10))
+    for n in range(samples):
+        frame = dvr.frame(start + timedelta(seconds=n * duration_seconds / samples), cache)
         if frame is not None:
             frames.append(frame); stats.append(detect(model, frame))
     if len(stats) < 12:
@@ -143,7 +144,8 @@ def full_window(dvr, model, start, cache):
             "active_density_fraction": active, "vehicles_total": vehicles}
 
 
-def rank_video(row, model, lookback_hours=119, coarse_minutes=30, top_windows=8):
+def rank_video(row, model, lookback_hours=119, coarse_minutes=30, top_windows=8,
+               duration_seconds=150):
     dvr = DVR(row["review_url"]); cache = {}; coarse = []
     if str(row.get("utc_offset_hours", "")).strip():
         utc_offset = float(row["utc_offset_hours"])
@@ -167,7 +169,7 @@ def rank_video(row, model, lookback_hours=119, coarse_minutes=30, top_windows=8)
     print(f"  coarse_candidates={len(coarse)}", flush=True)
     candidates = []; evaluated = []
     for _, start in sorted(coarse, reverse=True)[:top_windows]:
-        metrics = full_window(dvr, model, start, cache)
+        metrics = full_window(dvr, model, start, cache, duration_seconds=duration_seconds)
         if metrics:
             evaluated.append((metrics["score"], start, metrics))
         if metrics and metrics["passed"]:

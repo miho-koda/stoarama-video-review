@@ -28,4 +28,4 @@ python scripts/enrich_accepted_metadata.py --help
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests
 ```
 
-See [Dataset overview](docs/DATASET_40_CLIPS.md), [original workflow](docs/ORIGINAL_SERVER_WORKFLOW.md), [data dictionary](docs/DATA_DICTIONARY.md), [location verification](docs/LOCATION_VERIFICATION.md), and [Drive deliverables](docs/DRIVE_DELIVERABLES.md).
+See [Dataset overview](docs/DATASET_40_CLIPS.md), [original workflow](docs/ORIGINAL_SERVER_WORKFLOW.md), [120-second expansion](docs/EXPANSION_120S.md), [data dictionary](docs/DATA_DICTIONARY.md), [location verification](docs/LOCATION_VERIFICATION.md), and [Drive deliverables](docs/DRIVE_DELIVERABLES.md).

@@ -31,5 +31,13 @@
     "good_seconds": 120,
     "accepted_seconds": 90
   },
+  "expansion": {
+    "duration_seconds": 120,
+    "clips_per_source": 4,
+    "coarse_interval_minutes": 10,
+    "top_windows_per_video": 64,
+    "lookback_hours": 119,
+    "run_revision": "expansion-120s-v1"
+  },
   "drive_remote": "pilotdrive:"
 }

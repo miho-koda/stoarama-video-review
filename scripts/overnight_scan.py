@@ -79,8 +79,9 @@ def round_robin(rows: list[dict]) -> list[dict]:
     return ordered
 
 
-def preserve_youtube(dvr, row: dict, start: datetime, duration: int, clip_dir: Path) -> Path:
-    output = clip_dir / f"youtube-{row['video_id']}-{safe_name(row.get('name') or row['video_id'])}.mp4"
+def preserve_youtube(dvr, row: dict, start: datetime, duration: int, clip_dir: Path,
+                     output_name: str | None = None) -> Path:
+    output = clip_dir / (output_name or f"youtube-{row['video_id']}-{safe_name(row.get('name') or row['video_id'])}.mp4")
     with tempfile.TemporaryDirectory(prefix="youtube-preserve-") as raw_temporary:
         raw = Path(raw_temporary) / "raw.mp4"
         with raw.open("wb") as handle:

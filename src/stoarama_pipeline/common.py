@@ -6,8 +6,8 @@ import urllib.parse
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_CONFIG = ROOT / "pipeline_config.json"
+ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_CONFIG = ROOT / "config" / "pipeline_config.json"
 
 
 def load_config(path: str | Path | None = None) -> dict:
