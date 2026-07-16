@@ -55,7 +55,7 @@ def pilot_row(pilot: dict, row_id: int) -> dict:
         "legacy_timestamp_accuracy": pilot["timestamp_accuracy"], "legacy_timestamp_source": pilot["timestamp_source"],
         "legacy_annotation_score": pilot["annotation_score"], "recording_start_local": pilot["recording_start_local"],
         "recording_end_local": pilot["recording_end_local"], "legacy_street_or_area": pilot["street_or_area"],
-        "legacy_timezone": pilot["timezone"], "legacy_status": pilot["status"],
+        "legacy_timezone": pilot.get("timezone", ""), "legacy_status": pilot.get("status", ""),
     }
 
 
