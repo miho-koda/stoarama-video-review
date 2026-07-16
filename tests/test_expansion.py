@@ -3,6 +3,7 @@ from pathlib import Path
 
 from expand_accepted_sources import choose_non_overlapping, expansion_row, overlaps, shard_for
 from stoarama_pipeline.common import load_config
+from youtube_dvr_scan import browser_spec
 
 
 BASE = datetime(2026, 7, 16, tzinfo=timezone.utc)
@@ -57,3 +58,7 @@ def test_expansion_policy_is_locked_to_strict_120_second_output():
 def test_job_caps_concurrency_at_six():
     job = (Path(__file__).resolve().parents[1] / "jobs" / "expand_accepted_sources.sbatch").read_text()
     assert "#SBATCH --array=0-5%6" in job
+
+
+def test_browser_profile_is_kept_local_to_yt_dlp():
+    assert browser_spec("chrome:Profile 1") == ("chrome", "Profile 1")

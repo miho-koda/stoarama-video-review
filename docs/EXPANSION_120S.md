@@ -7,3 +7,5 @@ Every expansion clip is exactly 120 seconds. The original hard quality gates rem
 The six-way Slurm array is `jobs/expand_accepted_sources.sbatch`; its `0-5%6` array setting limits concurrent GPU workers to six. `jobs/merge_expansion.sbatch` merges the six shards and uploads only reports to `pilotdrive:overnight_scan/expansion_120s_v1/`. Clips upload to shard subfolders and local media are deleted only after link and remote-size verification.
 
 Shortfalls are expected when a source has fewer than four strict candidates in YouTube's rolling DVR window. They are recorded in `expansion_ledger.csv`; they are never filled by relaxing quality rules.
+
+If server-side YouTube access is bot-blocked, run the same command locally with `--youtube-browser chrome:Profile 1`. The browser profile is read locally by yt-dlp; credentials and cookies must never be copied into this repository or sent to the GPU server.

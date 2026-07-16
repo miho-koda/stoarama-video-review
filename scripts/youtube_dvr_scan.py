@@ -32,6 +32,11 @@ CRITERIA = {
 DEVICE = os.environ.get("YOLO_DEVICE", "0")
 
 
+def browser_spec(value: str) -> tuple[str, ...]:
+    browser, _, profile = value.partition(":")
+    return (browser, profile) if profile else (browser,)
+
+
 def configure(criteria: dict | None = None, device: str | None = None):
     """Override scanner thresholds without embedding pilot-specific values."""
     global DEVICE
@@ -42,9 +47,13 @@ def configure(criteria: dict | None = None, device: str | None = None):
 
 
 class DVR:
-    def __init__(self, url):
+    def __init__(self, url, browser: str | None = None):
         self.url = url
-        with yt_dlp.YoutubeDL({"quiet": True, "live_from_start": True, "skip_download": True}) as ydl:
+        options = {"quiet": True, "live_from_start": True, "skip_download": True,
+                   "js_runtimes": {"deno": {}}, "remote_components": {"ejs:github"}}
+        if browser:
+            options["cookiesfrombrowser"] = browser_spec(browser)
+        with yt_dlp.YoutubeDL(options) as ydl:
             self.info = ydl.extract_info(url, download=False)
         formats = [f for f in self.info["formats"] if f.get("height") == 720 and callable(f.get("fragments"))]
         self.fmt = formats[0]
@@ -145,8 +154,8 @@ def full_window(dvr, model, start, cache, duration_seconds=150):
 
 
 def rank_video(row, model, lookback_hours=119, coarse_minutes=30, top_windows=8,
-               duration_seconds=150):
-    dvr = DVR(row["review_url"]); cache = {}; coarse = []
+               duration_seconds=150, youtube_browser: str | None = None):
+    dvr = DVR(row["review_url"], browser=youtube_browser); cache = {}; coarse = []
     if str(row.get("utc_offset_hours", "")).strip():
         utc_offset = float(row["utc_offset_hours"])
     else:

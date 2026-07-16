@@ -106,6 +106,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--work", type=Path, required=True)
     result.add_argument("--model", required=True)
     result.add_argument("--device", default="0")
+    result.add_argument("--youtube-browser", default="", help="optional local browser/profile, e.g. chrome:Profile 1")
     result.add_argument("--drive-remote", required=True)
     result.add_argument("--config", default=str(PROJECT_ROOT / "config" / "pipeline_config.json"))
     result.add_argument("--shard-count", type=int, default=1)
@@ -156,6 +157,7 @@ def main() -> None:
                 lookback_hours=int(policy["lookback_hours"]),
                 coarse_minutes=int(policy["coarse_interval_minutes"]),
                 top_windows=int(policy["top_windows_per_video"]), duration_seconds=duration,
+                youtube_browser=args.youtube_browser or None,
             )
             strict_count = len(candidates)
             selections = choose_non_overlapping(candidates, blocked, duration, cap - len(prior))

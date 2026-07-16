@@ -19,11 +19,16 @@ mkdir -p "${work}" "${root}/logs"
 rclone="${HOME}/.local/bin/rclone"
 input="${work}/selections_all.final_enriched.csv"
 "${rclone}" copyto "${STOARAMA_EXPANSION_INPUT_REMOTE:-pilotdrive:overnight_scan/selections_all.final_enriched.csv}" "${input}"
+browser_args=()
+if [[ -n "${STOARAMA_EXPANSION_YOUTUBE_BROWSER:-}" ]]; then
+  browser_args=(--youtube-browser "${STOARAMA_EXPANSION_YOUTUBE_BROWSER}")
+fi
 "${STOARAMA_PYTHON:?Set STOARAMA_PYTHON}" scripts/expand_accepted_sources.py \
   --input "${input}" \
   --work "${work}" \
   --model "${STOARAMA_MODEL:?Set STOARAMA_MODEL}" \
   --device 0 \
   --drive-remote "${STOARAMA_EXPANSION_DRIVE_ROOT:-pilotdrive:overnight_scan/expansion_120s_v1}/shard_${SLURM_ARRAY_TASK_ID}/clips" \
+  "${browser_args[@]}" \
   --shard-count 6 --shard-index "${SLURM_ARRAY_TASK_ID}" \
   --max-sources "${STOARAMA_EXPANSION_MAX_SOURCES:-0}" --hours 5.5
