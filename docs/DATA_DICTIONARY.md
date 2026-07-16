@@ -4,7 +4,9 @@ The canonical Drive file retains original selection columns and appends current 
 
 ## Selection fields
 
-`source_key`, `stream_id`, and `video_id` identify a source. URLs identify its original source and review page. `segment_start_utc`, `segment_end_utc`, and `duration_seconds` identify the clip. Score, people, daylight, fixed-camera, social, and vehicle fields record automated selection evidence. `drive_url`, `upload_status`, `link_status`, and `status` record preservation outcome.
+`source_key`, `stream_id`, and `video_id` identify a source. URLs identify its original source and review page. `segment_start_utc`, `segment_end_utc`, and `duration_seconds` identify the clip. Score, people, daylight, fixed-camera, social, and vehicle fields record automated selection evidence where available. `drive_url`, `upload_status`, `link_status`, and `status` record preservation outcome.
+
+`selection_origin`, `selection_policy`, and `quality_gate_status` distinguish the 40 later strict-server rows from the ten preserved legacy-pilot rows. Fields beginning `legacy_` retain pilot-only filename, timing, location, score, and status details without pretending that missing later metrics were measured.
 
 ## Locations
 

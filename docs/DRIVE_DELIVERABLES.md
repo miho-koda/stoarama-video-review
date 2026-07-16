@@ -4,7 +4,7 @@ The `pilotdrive:overnight_scan` Drive folder is the durable home for the accepte
 
 ## Canonical file
 
-- [selections_all.final_enriched.csv](https://drive.google.com/open?id=1uUcmEErzjizq30k__nwA6x77Jn0ZGJ6q) — 40 accepted clips with reviewed locations and added source/public metadata.
+- [selections_all.final_enriched.csv](https://drive.google.com/open?id=1uUcmEErzjizq30k__nwA6x77Jn0ZGJ6q) — 50 selected clips: 40 strict server selections plus 10 preserved legacy-pilot clips.
 
 ## Supporting files
 

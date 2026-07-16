@@ -1,6 +1,8 @@
-# Dataset: 40 accepted camera clips
+# Dataset: 50 selected camera clips
 
-The dataset contains 40 fixed-camera, daylight social-mixing clips selected by the original Stoarama server workflow. Each accepted clip is 90, 120, or 150 seconds and has a verified Drive upload. The canonical metadata file is [selections_all.final_enriched.csv](https://drive.google.com/open?id=1uUcmEErzjizq30k__nwA6x77Jn0ZGJ6q).
+The dataset contains 40 clips selected by the original Stoarama server workflow plus 10 preserved legacy-pilot clips. Each has a verified Drive upload. The canonical metadata file is [selections_all.final_enriched.csv](https://drive.google.com/open?id=1uUcmEErzjizq30k__nwA6x77Jn0ZGJ6q).
+
+The 40 server-selected rows are labelled `overnight_server_scan` and `automated_strict_pass`. The ten pilot rows are labelled `pilot_legacy` and `not_revalidated`: they retain their original timing, location, people, score, and Drive metadata, but do not have every later strict-scanner metric.
 
 ## Geographic coverage
 
